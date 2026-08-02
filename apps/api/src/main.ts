@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import type { EnvConfig } from './config/env.validation';
 
@@ -10,6 +11,10 @@ import type { EnvConfig } from './config/env.validation';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService<EnvConfig, true>);
+
+  // Needed to read the httpOnly refresh-token cookie set by AuthController
+  // (see docs/architecture/auth.md).
+  app.use(cookieParser());
 
   app.enableCors({
     origin: config.get('CORS_ORIGIN', { infer: true }),

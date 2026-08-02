@@ -79,6 +79,18 @@ by organization; instead, the API only ever exposes user records that share
 an `organization_memberships` row with the caller's active organization —
 enforced in the `users` module's service layer.
 
+## Bootstrap lookups
+
+A handful of auth flows need to find a row **before** a single
+organization context is known — discovering every org a user belongs to
+at login, or looking up a refresh token/invitation by its hash alone.
+These get their own narrow, additional permissive RLS policies (keyed on
+"you already hold the exact secret" or "you just proved who you are," not
+on organization) rather than bypassing RLS. See
+[ADR 0006](../adr/0006-auth-bootstrap-rls-policies.md) for the full
+reasoning and `apps/api/src/prisma/run-with-session-var.ts` for the
+implementation.
+
 ## Testing the isolation
 
 A migration is not considered complete until a test proves the isolation

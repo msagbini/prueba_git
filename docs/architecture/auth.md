@@ -60,15 +60,23 @@ POST /auth/login { email, password }
    │ 1 active │ N active
    │ membership│ memberships
    ▼          ▼
- issue tokens   return membership list
- for that org   (no tokens yet)
+ issue tokens   selectionToken + membership list
+ for that org   (no access/refresh tokens yet)
                         │
                         ▼
-          POST /auth/select-organization { organizationId }
+    POST /auth/select-organization { selectionToken, organizationId }
                         │
                         ▼
               issue tokens for that org
 ```
+
+`selectionToken` is a separate, short-lived (5 minute) JWT — payload
+`{ sub, purpose: "org-selection" }`, signed with the same access-token
+secret but carrying no `org`/`membershipId`/`role` claims — returned in
+the login response body, not a header. It exists purely to prove "this
+caller just successfully verified their password" across the two
+requests, without minting a real (org-scoped) access token before an
+organization has actually been chosen.
 
 Switching organizations later (without logging out) goes through
 `POST /auth/switch-organization`, which mints a new token pair for a

@@ -131,5 +131,54 @@ this captures _what and when_).
     `@Public()` routes like `/health` correctly bypass the tenant
     transaction since they have no `req.user`).
 
-_(Continued as later steps land — auth module, business module
-skeletons, web/mobile scaffolds, CI.)_
+- **Auth module** (`apps/api/src/modules/auth/`): implemented for real —
+  `signup`, `login` (single and multi-membership branches),
+  `select-organization`, `switch-organization`, `refresh` (rotation +
+  reuse-family revocation), `logout` (idempotent), `me`, `verify-email`,
+  `forgot-password`/`reset-password`, and the invitation flow
+  (`organizations/me/invitations` create, public preview, accept with
+  both the new-account and existing-account branches). `argon2id`
+  password hashing, SHA-256 token hashing, `JwtAuthGuard` registered
+  globally via `APP_GUARD`, `RolesGuard`/`PermissionsGuard` exported for
+  other modules, `EmailService` stubbed to console logging per the
+  original plan.
+  - **Two more real bugs found by live end-to-end testing** (not by
+    review): (1) `AuthService.me()`/`login()` crashed — Prisma's
+    `include: { organization: true }` on an `organization_memberships`
+    row fetched via the `app.current_user_id` bootstrap policy still hits
+    `organizations`' own separate RLS policy, which wasn't satisfied;
+    fixed with a fourth bootstrap policy, `bootstrap_by_membership`
+    (`FOR SELECT`, subquery against `organization_memberships`) — see
+    migration `auth_bootstrap_organization_visibility` and the updated
+    ADR 0006. (2) `AuthService.refresh()`/`findValidInvitation()` had the
+    identical bug shape one level deeper (`membership`/`organization`
+    includes inside a `app.lookup_token_hash`-scoped lookup); fixed by
+    refactoring both to a two-step pattern instead of a fifth bootstrap
+    policy — fetch only the scalar row in the bootstrap context, then
+    fetch related data through a normal `runInTenantTransaction` once the
+    organization id is known. This two-step shape is now the documented
+    default in ADR 0006; further bootstrap policies are the exception, not
+    the pattern.
+  - Also found and fixed: the refresh-token cookie was set with
+    `secure: true` unconditionally, which real browsers silently drop
+    over plain HTTP — local dev (`http://localhost`) always is. Now
+    conditional on `NODE_ENV === 'production'`.
+  - Also found and fixed: `POST /organizations/me/invitations` was fully
+    implemented in `AuthService` but never wired to a controller route —
+    caught immediately by testing the endpoint, not by lint/build/tsc
+    (routing gaps like this don't show up as type errors).
+  - **Full flow verified live** against the running API and a real
+    PostgreSQL database (not mocked, not just unit-tested): signup →
+    `/auth/me`; login → refresh (rotate) → reuse of the old token (401,
+    family revoked) → the token that replaced it also 401; an
+    owner-created invitation → public preview → accept as a new user →
+    that user's `/auth/me`; a STAFF member blocked (403) from creating
+    invitations; login with 2 memberships → `requiresOrganizationSelection`
+    → select-organization → switch-organization → `/auth/me` reflecting
+    the active org each time → switching to an org the user doesn't
+    belong to (403); logout → refresh with the same token (401) → logout
+    again (204, idempotent); forgot-password → reset-password → old
+    password rejected, new password accepted.
+
+_(Continued as later steps land — business module skeletons, web/mobile
+scaffolds, CI.)_
