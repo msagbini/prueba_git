@@ -8,7 +8,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
   // The API runtime connects as the restricted `dos_app` role (no
   // BYPASSRLS). Migrations run separately against `directUrl`, connected
   // as the privileged `dos_migrator` role (BYPASSRLS) — see
@@ -20,3 +20,289 @@ datasource db {
 // Models are added table-by-table in the migrations that follow this one,
 // grouped as: identity & tenancy, then business entities (see
 // docs/technical-log/phase-2.md for the exact sequence).
+//
+// Convention: every tenant-scoped table carries its own `organizationId`
+// column directly (even where it's reachable through a parent FK), so
+// every Row-Level Security policy is a single-column equality check — see
+// docs/architecture/multi-tenancy.md. `User`, `Role`, `Permission`,
+// `RolePermission`, `IndustryVertical`, `PasswordResetToken` and
+// `EmailVerificationToken` are the intentional exceptions: they are global
+// identity/reference tables, not tenant business data.
+
+// ---------------------------------------------------------------------------
+// Identity & tenancy
+// ---------------------------------------------------------------------------
+
+enum IndustryVerticalCode {
+  CLEANING
+  CONSTRUCTION_CLEANING
+  MAINTENANCE
+  LANDSCAPING
+  GENERAL_FIELD_SERVICE
+
+  @@map("industry_vertical_code")
+}
+
+/// Reference data: the verticals DOS is configured for. Organizations link
+/// to one; industry-specific behavior is driven by configuration (see
+/// Organization.settings), not by branching code per vertical.
+model IndustryVertical {
+  id          String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        IndustryVerticalCode @unique
+  name        String
+  description String?
+
+  organizations Organization[]
+
+  @@map("industry_verticals")
+}
+
+enum OrganizationStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+
+  @@map("organization_status")
+}
+
+/// A tenant. Every business-data table ultimately scopes to one of these,
+/// either directly (organizationId column) or, for Organization itself, by
+/// its own id — see the RLS policy on this table in the accompanying
+/// migration.
+model Organization {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String
+  slug               String             @unique
+  industryVerticalId String             @map("industry_vertical_id") @db.Uuid
+  timezone           String
+  locale             String
+  status             OrganizationStatus @default(TRIAL)
+  /// Vertical-specific configuration (e.g. default job duration, terminology
+  /// overrides). Deliberately opaque/JSON rather than typed columns per
+  /// vertical — see docs/adr for the extensibility rationale.
+  settings           Json?
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  industryVertical IndustryVertical         @relation(fields: [industryVerticalId], references: [id])
+  memberships      OrganizationMembership[]
+  invitations      UserInvitation[]
+  refreshTokens    RefreshToken[]
+
+  @@map("organizations")
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+
+  @@map("user_status")
+}
+
+/// A global identity. Deliberately has no organizationId — a user can hold
+/// memberships in several organizations (ADR 0005). Access to another
+/// user's record is restricted at the API layer to users who share an
+/// OrganizationMembership, not by RLS on this table.
+model User {
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email           String     @unique
+  passwordHash    String     @map("password_hash")
+  firstName       String     @map("first_name")
+  lastName        String     @map("last_name")
+  phone           String?
+  status          UserStatus @default(ACTIVE)
+  emailVerifiedAt DateTime?  @map("email_verified_at")
+  lastLoginAt     DateTime?  @map("last_login_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+  deletedAt       DateTime?  @map("deleted_at")
+
+  memberships             OrganizationMembership[]
+  refreshTokens           RefreshToken[]
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  sentInvitations         UserInvitation[]         @relation("InvitedBy")
+
+  @@map("users")
+}
+
+enum RoleCode {
+  OWNER
+  ADMIN
+  DISPATCHER
+  STAFF
+  CLIENT
+
+  @@map("role_code")
+}
+
+/// Fixed system roles for Fase 2 — see docs/architecture/auth.md. Per-org
+/// custom roles are a documented future extension (isSystemRole exists to
+/// distinguish the two once that lands; every row is a system role today).
+model Role {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code         RoleCode @unique
+  name         String
+  description  String?
+  isSystemRole Boolean  @default(true) @map("is_system_role")
+
+  memberships     OrganizationMembership[]
+  rolePermissions RolePermission[]
+  invitations     UserInvitation[]
+
+  @@map("roles")
+}
+
+/// A single grantable capability (e.g. "jobs.assign"). See the RBAC matrix
+/// in docs/architecture/auth.md for how these compose per role.
+model Permission {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String  @unique
+  module      String
+  description String?
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+/// Join table: which permissions a role grants.
+model RolePermission {
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+
+  @@map("membership_status")
+}
+
+/// The join between a global User and an Organization: what role they hold
+/// there, and (for the Client role) which Client record they are. A JWT
+/// access token is scoped to exactly one membership at a time — see
+/// docs/architecture/auth.md.
+model OrganizationMembership {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  roleId         String           @map("role_id") @db.Uuid
+  /// Only set when roleId is the Client role — links this membership to the
+  /// specific Client record this person is.
+  clientId       String?          @map("client_id") @db.Uuid
+  status         MembershipStatus @default(ACTIVE)
+  joinedAt       DateTime         @default(now()) @map("joined_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+  role         Role         @relation(fields: [roleId], references: [id])
+
+  refreshTokens RefreshToken[]
+  // staffProfile and jobAssignments back-relations are added in the next
+  // migration, once StaffProfile/JobAssignment exist (see
+  // docs/technical-log/phase-2.md).
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@map("organization_memberships")
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+
+  @@map("invitation_status")
+}
+
+/// A pending invite to join an Organization with a given Role. See the
+/// accept-flow branching (new email vs. existing account) in
+/// docs/architecture/auth.md.
+model UserInvitation {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String           @map("organization_id") @db.Uuid
+  email           String
+  roleId          String           @map("role_id") @db.Uuid
+  invitedByUserId String           @map("invited_by_user_id") @db.Uuid
+  tokenHash       String           @unique @map("token_hash")
+  status          InvitationStatus @default(PENDING)
+  expiresAt       DateTime         @map("expires_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  role         Role         @relation(fields: [roleId], references: [id])
+  invitedBy    User         @relation("InvitedBy", fields: [invitedByUserId], references: [id])
+
+  @@index([organizationId])
+  @@map("user_invitations")
+}
+
+/// A rotating refresh token, scoped to one OrganizationMembership (one
+/// active org at a time) per ADR 0004/0005. `replacedByTokenId` chains
+/// rotations so reuse of a revoked token can be detected and the whole
+/// family revoked.
+model RefreshToken {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  membershipId      String    @map("membership_id") @db.Uuid
+  tokenHash         String    @unique @map("token_hash")
+  expiresAt         DateTime  @map("expires_at")
+  revokedAt         DateTime? @map("revoked_at")
+  replacedByTokenId String?   @unique @map("replaced_by_token_id") @db.Uuid
+  userAgent         String?   @map("user_agent")
+  ipAddress         String?   @map("ip_address")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  organization    Organization           @relation(fields: [organizationId], references: [id])
+  user            User                   @relation(fields: [userId], references: [id])
+  membership      OrganizationMembership @relation(fields: [membershipId], references: [id])
+  replacedByToken RefreshToken?          @relation("TokenChain", fields: [replacedByTokenId], references: [id])
+  replacesToken   RefreshToken?          @relation("TokenChain")
+
+  @@index([organizationId])
+  @@map("refresh_tokens")
+}
+
+/// Password-reset tokens. Tied to the global User (a person has one
+/// password across every organization they belong to), so — like User
+/// itself — this table is intentionally not tenant-scoped.
+model PasswordResetToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("password_reset_tokens")
+}
+
+/// Email-verification tokens, sent on signup. Same not-tenant-scoped
+/// reasoning as PasswordResetToken — verifying an email verifies the
+/// global User, not a membership.
+model EmailVerificationToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("email_verification_tokens")
+}
