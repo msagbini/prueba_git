@@ -23,7 +23,7 @@ being built as a real, sellable product, not a prototype.
    - Every module has a `README.md`.
    - Every exported function has a doc comment (enforced by
      `eslint-plugin-jsdoc`, see `packages/config`).
-   - Non-obvious logic gets a short comment explaining *why*, not *what*.
+   - Non-obvious logic gets a short comment explaining _why_, not _what_.
    - Every phase gets an entry in `docs/technical-log/`.
    - Every non-trivial architectural decision gets an ADR in `docs/adr/`.
 
