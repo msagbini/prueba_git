@@ -84,10 +84,22 @@ model Organization {
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")
 
-  industryVertical IndustryVertical         @relation(fields: [industryVerticalId], references: [id])
-  memberships      OrganizationMembership[]
-  invitations      UserInvitation[]
-  refreshTokens    RefreshToken[]
+  industryVertical  IndustryVertical         @relation(fields: [industryVerticalId], references: [id])
+  memberships       OrganizationMembership[]
+  invitations       UserInvitation[]
+  refreshTokens     RefreshToken[]
+  clients           Client[]
+  serviceCategories ServiceCategory[]
+  services          Service[]
+  jobs              Job[]
+  staffProfiles     StaffProfile[]
+  invoices          Invoice[]
+  payments          Payment[]
+  auditLogs         AuditLog[]
+  clientAddresses   ClientAddress[]
+  jobServices       JobService[]
+  jobAssignments    JobAssignment[]
+  invoiceLineItems  InvoiceLineItem[]
 
   @@map("organizations")
 }
@@ -122,6 +134,8 @@ model User {
   passwordResetTokens     PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
   sentInvitations         UserInvitation[]         @relation("InvitedBy")
+  createdJobs             Job[]                    @relation("JobCreatedBy")
+  auditLogActions         AuditLog[]
 
   @@map("users")
 }
@@ -206,11 +220,11 @@ model OrganizationMembership {
   organization Organization @relation(fields: [organizationId], references: [id])
   user         User         @relation(fields: [userId], references: [id])
   role         Role         @relation(fields: [roleId], references: [id])
+  client       Client?      @relation(fields: [clientId], references: [id])
 
-  refreshTokens RefreshToken[]
-  // staffProfile and jobAssignments back-relations are added in the next
-  // migration, once StaffProfile/JobAssignment exist (see
-  // docs/technical-log/phase-2.md).
+  refreshTokens  RefreshToken[]
+  staffProfile   StaffProfile?
+  jobAssignments JobAssignment[]
 
   @@unique([organizationId, userId])
   @@index([organizationId])
@@ -305,4 +319,375 @@ model EmailVerificationToken {
   user User @relation(fields: [userId], references: [id])
 
   @@map("email_verification_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Business entities
+// ---------------------------------------------------------------------------
+
+enum ClientType {
+  RESIDENTIAL
+  COMMERCIAL
+
+  @@map("client_type")
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+
+  @@map("client_status")
+}
+
+/// A customer of an organization. Distinct from a portal-login user — a
+/// Client only gets a `User`/`OrganizationMembership` if they're granted
+/// portal access (role Client); most clients never log in at all.
+model Client {
+  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String       @map("organization_id") @db.Uuid
+  name               String
+  type               ClientType
+  primaryContactName String?      @map("primary_contact_name")
+  email              String?
+  phone              String?
+  status             ClientStatus @default(ACTIVE)
+  notes              String?
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+  deletedAt          DateTime?    @map("deleted_at")
+
+  organization Organization             @relation(fields: [organizationId], references: [id])
+  addresses    ClientAddress[]
+  memberships  OrganizationMembership[]
+  jobs         Job[]
+  invoices     Invoice[]
+
+  @@index([organizationId])
+  @@map("clients")
+}
+
+enum AddressLabel {
+  BILLING
+  SERVICE
+
+  @@map("address_label")
+}
+
+/// A physical address for a Client. Kept separate from Client because the
+/// service address a Job happens at commonly differs from the billing
+/// address, and a Client can have several of each.
+model ClientAddress {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  clientId       String       @map("client_id") @db.Uuid
+  label          AddressLabel
+  addressLine1   String       @map("address_line1")
+  addressLine2   String?      @map("address_line2")
+  city           String
+  state          String
+  postalCode     String       @map("postal_code")
+  country        String
+  lat            Float?
+  lng            Float?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  organization         Organization @relation(fields: [organizationId], references: [id])
+  client               Client       @relation(fields: [clientId], references: [id])
+  jobsAsServiceAddress Job[]        @relation("JobServiceAddress")
+
+  @@index([organizationId])
+  @@map("client_addresses")
+}
+
+/// Groups Services for catalog display (e.g. "Recurring", "One-time deep
+/// clean"). Optional — a Service does not require a category.
+model ServiceCategory {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  name           String
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  services     Service[]
+
+  @@index([organizationId])
+  @@map("service_categories")
+}
+
+enum PricingType {
+  HOURLY
+  FIXED
+  PER_UNIT
+
+  @@map("pricing_type")
+}
+
+/// A sellable service in an organization's catalog, priced by the hour, a
+/// fixed amount, or per unit (unitLabel, e.g. "sq ft", "window").
+model Service {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  categoryId     String?     @map("category_id") @db.Uuid
+  name           String
+  description    String?
+  pricingType    PricingType @map("pricing_type")
+  unitLabel      String?     @map("unit_label")
+  basePrice      Decimal     @map("base_price") @db.Decimal(10, 2)
+  isActive       Boolean     @default(true) @map("is_active")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  organization     Organization      @relation(fields: [organizationId], references: [id])
+  category         ServiceCategory?  @relation(fields: [categoryId], references: [id])
+  jobServices      JobService[]
+  invoiceLineItems InvoiceLineItem[]
+
+  @@index([organizationId])
+  @@map("services")
+}
+
+enum JobStatus {
+  DRAFT
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+
+  @@map("job_status")
+}
+
+/// A unit of scheduled work at a Client's address. `recurrenceRule` (an
+/// RRULE string) plus `parentJobId` link generated recurring instances back
+/// to the job they were spawned from.
+model Job {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  clientId         String    @map("client_id") @db.Uuid
+  serviceAddressId String?   @map("service_address_id") @db.Uuid
+  status           JobStatus @default(DRAFT)
+  scheduledStart   DateTime? @map("scheduled_start")
+  scheduledEnd     DateTime? @map("scheduled_end")
+  actualStart      DateTime? @map("actual_start")
+  actualEnd        DateTime? @map("actual_end")
+  /// RRULE string (RFC 5545) describing the recurrence pattern, if any.
+  recurrenceRule   String?   @map("recurrence_rule")
+  parentJobId      String?   @map("parent_job_id") @db.Uuid
+  notes            String?
+  createdByUserId  String    @map("created_by_user_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  organization       Organization      @relation(fields: [organizationId], references: [id])
+  client             Client            @relation(fields: [clientId], references: [id])
+  serviceAddress     ClientAddress?    @relation("JobServiceAddress", fields: [serviceAddressId], references: [id])
+  parentJob          Job?              @relation("JobRecurrence", fields: [parentJobId], references: [id])
+  recurringInstances Job[]             @relation("JobRecurrence")
+  createdBy          User              @relation("JobCreatedBy", fields: [createdByUserId], references: [id])
+  jobServices        JobService[]
+  assignments        JobAssignment[]
+  invoiceLineItems   InvoiceLineItem[]
+
+  @@index([organizationId])
+  @@map("jobs")
+}
+
+/// Join table: which Services (and at what price, snapshotted at booking
+/// time so later catalog price changes don't retroactively change a
+/// scheduled job) make up a Job.
+model JobService {
+  id                String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String  @map("organization_id") @db.Uuid
+  jobId             String  @map("job_id") @db.Uuid
+  serviceId         String  @map("service_id") @db.Uuid
+  quantity          Decimal @db.Decimal(10, 2)
+  unitPriceSnapshot Decimal @map("unit_price_snapshot") @db.Decimal(10, 2)
+  notes             String?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  job          Job          @relation(fields: [jobId], references: [id])
+  service      Service      @relation(fields: [serviceId], references: [id])
+
+  @@index([organizationId])
+  @@map("job_services")
+}
+
+enum AssignmentStatus {
+  ASSIGNED
+  CONFIRMED
+  DECLINED
+
+  @@map("assignment_status")
+}
+
+/// Which staff (OrganizationMembership) is assigned to a Job, and whether
+/// they've confirmed.
+model JobAssignment {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  jobId          String           @map("job_id") @db.Uuid
+  membershipId   String           @map("membership_id") @db.Uuid
+  status         AssignmentStatus @default(ASSIGNED)
+  assignedAt     DateTime         @default(now()) @map("assigned_at")
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  job          Job                    @relation(fields: [jobId], references: [id])
+  membership   OrganizationMembership @relation(fields: [membershipId], references: [id])
+
+  @@index([organizationId])
+  @@map("job_assignments")
+}
+
+enum StaffStatus {
+  ACTIVE
+  INACTIVE
+
+  @@map("staff_status")
+}
+
+/// Employment-specific fields for a staff member, 1:1 with the
+/// OrganizationMembership that represents their employment at this
+/// organization — kept off User/OrganizationMembership because these
+/// fields are operational/HR data, not identity or access-control data.
+model StaffProfile {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  membershipId   String      @unique @map("membership_id") @db.Uuid
+  employeeCode   String?     @map("employee_code")
+  hourlyRate     Decimal?    @map("hourly_rate") @db.Decimal(10, 2)
+  hireDate       DateTime?   @map("hire_date") @db.Date
+  status         StaffStatus @default(ACTIVE)
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  membership   OrganizationMembership @relation(fields: [membershipId], references: [id])
+
+  @@index([organizationId])
+  @@map("staff_profiles")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  VOID
+
+  @@map("invoice_status")
+}
+
+/// A bill sent to a Client, itemized via InvoiceLineItem and settled via
+/// one or more Payments.
+model Invoice {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  clientId       String        @map("client_id") @db.Uuid
+  invoiceNumber  String        @map("invoice_number")
+  status         InvoiceStatus @default(DRAFT)
+  issueDate      DateTime      @map("issue_date") @db.Date
+  dueDate        DateTime      @map("due_date") @db.Date
+  subtotal       Decimal       @db.Decimal(10, 2)
+  taxAmount      Decimal       @map("tax_amount") @db.Decimal(10, 2)
+  total          Decimal       @db.Decimal(10, 2)
+  currency       String        @default("USD")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  client       Client            @relation(fields: [clientId], references: [id])
+  lineItems    InvoiceLineItem[]
+  payments     Payment[]
+
+  @@unique([organizationId, invoiceNumber])
+  @@index([organizationId])
+  @@map("invoices")
+}
+
+/// A single billed line on an Invoice, optionally traceable back to the Job
+/// and/or Service it came from (nullable — an invoice can carry an
+/// ad-hoc/manual line item with no Job or Service behind it).
+model InvoiceLineItem {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  invoiceId      String  @map("invoice_id") @db.Uuid
+  jobId          String? @map("job_id") @db.Uuid
+  serviceId      String? @map("service_id") @db.Uuid
+  description    String
+  quantity       Decimal @db.Decimal(10, 2)
+  unitPrice      Decimal @map("unit_price") @db.Decimal(10, 2)
+  lineTotal      Decimal @map("line_total") @db.Decimal(10, 2)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id])
+  job          Job?         @relation(fields: [jobId], references: [id])
+  service      Service?     @relation(fields: [serviceId], references: [id])
+
+  @@index([organizationId])
+  @@map("invoice_line_items")
+}
+
+enum PaymentMethod {
+  CASH
+  CHECK
+  CARD
+  BANK_TRANSFER
+  OTHER
+
+  @@map("payment_method")
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+
+  @@map("payment_status")
+}
+
+/// A record of money received against an Invoice. Record-keeping only in
+/// Fase 2 — no payment-gateway integration fields (Stripe is Fase 4).
+model Payment {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String        @map("organization_id") @db.Uuid
+  invoiceId       String        @map("invoice_id") @db.Uuid
+  amount          Decimal       @db.Decimal(10, 2)
+  method          PaymentMethod
+  status          PaymentStatus @default(PENDING)
+  paidAt          DateTime?     @map("paid_at")
+  referenceNumber String?       @map("reference_number")
+  notes           String?
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id])
+
+  @@index([organizationId])
+  @@map("payments")
+}
+
+/// Append-only audit trail. `organizationId` is nullable for system-level
+/// events with no single owning tenant; because the RLS policy below
+/// compares organizationId to the caller's active org, null-org rows are
+/// only reachable via the privileged `dos_migrator` connection, never
+/// through the tenant-scoped API path — by design, not oversight.
+model AuditLog {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String?  @map("organization_id") @db.Uuid
+  actorUserId    String?  @map("actor_user_id") @db.Uuid
+  action         String
+  entityType     String   @map("entity_type")
+  entityId       String   @map("entity_id") @db.Uuid
+  beforeState    Json?    @map("before_state")
+  afterState     Json?    @map("after_state")
+  ipAddress      String?  @map("ip_address")
+  userAgent      String?  @map("user_agent")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  actor        User?         @relation(fields: [actorUserId], references: [id])
+
+  @@index([organizationId])
+  @@map("audit_logs")
 }

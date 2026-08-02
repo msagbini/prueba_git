@@ -76,6 +76,22 @@ this captures _what and when_).
     with a small, deliberately non-extending `tsconfig.seed.json` used
     only by `pnpm prisma:seed`.
 
-_(Continued as later steps land — business entity schema, ERD, auth
-module, tenant-context wiring, business module skeletons, web/mobile
-scaffolds, CI.)_
+- **Business entity schema** (migration `business_entities`): `Client`,
+  `ClientAddress`, `ServiceCategory`, `Service`, `Job`, `JobService`,
+  `JobAssignment`, `StaffProfile`, `Invoice`, `InvoiceLineItem`, `Payment`,
+  `AuditLog` — 12 tables, all carrying `organizationId` directly (including
+  join tables like `job_services`, per the "no policy needs a JOIN"
+  convention). RLS policies added for all 12; `audit_logs.organization_id`
+  is nullable for system-level events, which the fail-closed policy makes
+  invisible to every tenant connection by construction, not by extra code.
+  - **Verified against the live Postgres instance**: seeded two orgs, each
+    with a client and a job; confirmed Org A's `dos_app` connection sees
+    only its own job/client counts, and — the trickier case — a
+    cross-table subquery deliberately reaching for Org B's client id from
+    within an Org-A-scoped connection returns zero rows rather than an
+    error, i.e. the isolation holds through a join, not just direct id
+    lookups.
+  - Money fields use `Decimal(10,2)`, not float, throughout.
+
+_(Continued as later steps land — ERD, auth module, tenant-context wiring,
+business module skeletons, web/mobile scaffolds, CI.)_
