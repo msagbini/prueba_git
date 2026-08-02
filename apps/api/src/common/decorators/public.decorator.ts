@@ -1,6 +1,6 @@
-import { SetMetadata } from "@nestjs/common";
+import { SetMetadata } from '@nestjs/common';
 
-export const IS_PUBLIC_KEY = "isPublic";
+export const IS_PUBLIC_KEY = 'isPublic';
 
 /**
  * Marks a route as exempt from the global JwtAuthGuard (see
@@ -10,5 +10,4 @@ export const IS_PUBLIC_KEY = "isPublic";
  * health check.
  * @returns a decorator that tags the route/class with `isPublic: true` metadata
  */
-export const Public = (): ReturnType<typeof SetMetadata> =>
-  SetMetadata(IS_PUBLIC_KEY, true);
+export const Public = (): ReturnType<typeof SetMetadata> => SetMetadata(IS_PUBLIC_KEY, true);

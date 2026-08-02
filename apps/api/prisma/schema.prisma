@@ -1,0 +1,22 @@
+// DOS database schema. Single source of truth for every table — reviewed
+// against docs/architecture/multi-tenancy.md and the ERD in docs/erd/.
+// Row-Level Security policies are not expressible here; they are
+// hand-authored SQL appended to the relevant migration (see ADR 0002).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // The API runtime connects as the restricted `dos_app` role (no
+  // BYPASSRLS). Migrations run separately against `directUrl`, connected
+  // as the privileged `dos_migrator` role (BYPASSRLS) — see
+  // docs/architecture/multi-tenancy.md.
+  url       = env("DATABASE_URL")
+  directUrl = env("MIGRATION_DATABASE_URL")
+}
+
+// Models are added table-by-table in the migrations that follow this one,
+// grouped as: identity & tenancy, then business entities (see
+// docs/technical-log/phase-2.md for the exact sequence).

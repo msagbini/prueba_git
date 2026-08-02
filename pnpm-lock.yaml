@@ -14,6 +14,9 @@ importers:
       '@commitlint/config-conventional':
         specifier: ^19.5.0
         version: 19.8.1
+      '@dos/config':
+        specifier: workspace:*
+        version: link:packages/config
       globals:
         specifier: ^15.11.0
         version: 15.15.0

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from 'zod';
 
 /**
  * Schema for every environment variable the API depends on. Validated once
@@ -6,9 +6,7 @@ import { z } from "zod";
  * fast on startup instead of surfacing as a confusing runtime error later.
  */
 export const envSchema = z.object({
-  NODE_ENV: z
-    .enum(["development", "test", "production"])
-    .default("development"),
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
 
   /** Connection string used by the running API — the restricted `dos_app` Postgres role (no BYPASSRLS). */
@@ -17,10 +15,10 @@ export const envSchema = z.object({
   MIGRATION_DATABASE_URL: z.string().url(),
 
   JWT_ACCESS_SECRET: z.string().min(32),
-  JWT_ACCESS_TTL: z.string().default("15m"),
+  JWT_ACCESS_TTL: z.string().default('15m'),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
 
-  CORS_ORIGIN: z.string().default("http://localhost:5173"),
+  CORS_ORIGIN: z.string().default('http://localhost:5173'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
@@ -36,8 +34,8 @@ export function validateEnv(config: Record<string, unknown>): EnvConfig {
   const parsed = envSchema.safeParse(config);
   if (!parsed.success) {
     const message = parsed.error.issues
-      .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
-      .join("\n");
+      .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+      .join('\n');
     throw new Error(`Invalid environment configuration:\n${message}`);
   }
   return parsed.data;

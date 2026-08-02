@@ -1,6 +1,6 @@
-import { Global, Module } from "@nestjs/common";
-import { ConfigModule } from "@nestjs/config";
-import { validateEnv } from "./env.validation";
+import { Global, Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { validateEnv } from './env.validation';
 
 /**
  * Wraps Nest's ConfigModule with strict env validation ({@link validateEnv})
