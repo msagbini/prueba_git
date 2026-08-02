@@ -93,5 +93,11 @@ this captures _what and when_).
     lookups.
   - Money fields use `Decimal(10,2)`, not float, throughout.
 
-_(Continued as later steps land — ERD, auth module, tenant-context wiring,
+- **ERD** (`docs/erd/erd.md`): Mermaid entity-relationship diagram covering
+  all 23 models. Cross-checked field-by-field against `schema.prisma`
+  (grepped every model's fields and diffed by hand) to catch transcription
+  errors before treating it as the review artifact for the "no invented
+  fields" rule — no discrepancies found.
+
+_(Continued as later steps land — auth module, tenant-context wiring,
 business module skeletons, web/mobile scaffolds, CI.)_
