@@ -99,5 +99,37 @@ this captures _what and when_).
   errors before treating it as the review artifact for the "no invented
   fields" rule — no discrepancies found.
 
-_(Continued as later steps land — auth module, tenant-context wiring,
-business module skeletons, web/mobile scaffolds, CI.)_
+- **Tenant-context wiring** (`apps/api/src/prisma/`): implemented for
+  real, not stubbed — `run-in-tenant-transaction.ts` (opens one Prisma
+  interactive transaction per scoped operation, sets
+  `app.current_org_id` via `set_config` so it can be parameter-bound
+  instead of string-interpolated into SQL), `tenant-scoping.extension.ts`
+  (Prisma Client Extension auto-injecting `organizationId` into
+  reads/writes on the 15 tenant-scoped models), `ClsModule` +
+  `TenantTransactionInterceptor` + `TenantContextService` (wraps every
+  authenticated HTTP request in a transaction scoped to `req.user.org`,
+  exposed to services via CLS).
+  - **Verified against the live database**:
+    `tenant-scoping.integration.spec.ts` seeds two real organizations and
+    proves (a) an unfiltered `findMany` only returns the active org's
+    rows, (b) a `create` whose caller hardcodes the _wrong_
+    `organizationId` is rejected — not silently corrected — by Postgres
+    RLS's `WITH CHECK`, (c) a direct id lookup into another org's row
+    returns null, (d) a join-shaped filter reaching for another org's
+    data returns zero rows. All 4 tests pass against Postgres 16.
+  - Found and documented a real Prisma typing limitation along the way:
+    Client Extensions change query _behavior_, not generated argument
+    _types_, so `organizationId` is still required at compile time on
+    every typed `create()` call regardless of the extension — the
+    auto-injection's practical value is on the read/filter side (where
+    args are optional) plus defense-in-depth for untyped call sites, not
+    "omit the field entirely," which the original design sketch implied.
+    Adjusted the extension's docstring and the test suite accordingly
+    instead of leaving the documentation overstating what it does.
+  - Live-booted the full app with this wired in
+    (`ClsModule`/interceptor/health check all initialize correctly, and
+    `@Public()` routes like `/health` correctly bypass the tenant
+    transaction since they have no `req.user`).
+
+_(Continued as later steps land — auth module, business module
+skeletons, web/mobile scaffolds, CI.)_

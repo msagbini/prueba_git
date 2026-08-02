@@ -82,5 +82,13 @@ enforced in the `users` module's service layer.
 ## Testing the isolation
 
 A migration is not considered complete until a test proves the isolation
-holds: seed two organizations, authenticate as one, and assert that
-querying for the other organization's data — through the ORM and, deliberately, through a raw query using the restricted `dos_app` role — returns zero rows. See `apps/api/src/prisma/*.spec.ts` once written (Fase 2 step: tenant-context wiring).
+holds: seed two organizations, scope a client to one, and assert that
+reading, joining into, and writing the other organization's data all fail
+— through the ORM (both layers together) and, deliberately, through the
+restricted `dos_app` role directly. See
+[`apps/api/src/prisma/tenant-scoping.integration.spec.ts`](../../apps/api/src/prisma/tenant-scoping.integration.spec.ts),
+which runs against a real PostgreSQL database rather than mocks, and
+[`apps/api/src/prisma/README.md`](../../apps/api/src/prisma/README.md) for
+how the mechanism itself (`run-in-tenant-transaction.ts`,
+`tenant-scoping.extension.ts`, `tenant-transaction.interceptor.ts`) is
+implemented.
