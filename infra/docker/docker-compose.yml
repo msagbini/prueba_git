@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dos-postgres
+    restart: unless-stopped
+    environment:
+      # POSTGRES_USER becomes a Postgres superuser (BYPASSRLS is implicit)
+      # and owns the `dos` database — this is the `dos_migrator` role from
+      # docs/architecture/multi-tenancy.md. The restricted `dos_app` role
+      # (no BYPASSRLS, used by the running API) is created by init.sql.
+      POSTGRES_USER: dos_migrator
+      POSTGRES_PASSWORD: dos_migrator_password
+      POSTGRES_DB: dos
+    ports:
+      - "5432:5432"
+    volumes:
+      - dos-postgres-data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dos_migrator -d dos"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  dos-postgres-data:
