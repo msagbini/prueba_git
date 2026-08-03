@@ -2,14 +2,20 @@
 
 import { useState } from "react";
 import { categories, getCategory } from "@/lib/products";
+import { shapes, type ShapeId } from "@/lib/shapes";
 import LivePreview from "@/components/LivePreview";
+import ShapePicker from "@/components/ShapePicker";
 
 type Status = "idle" | "submitting" | "success" | "error";
+
+const ALL_SHAPE_IDS = shapes.map((s) => s.id);
 
 export default function CustomOrderPage() {
   const [status, setStatus] = useState<Status>("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [categorySlug, setCategorySlug] = useState(categories[0].slug);
+  const [shape, setShape] = useState<ShapeId>("circle");
+  const [character, setCharacter] = useState("1");
   const [message, setMessage] = useState("");
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
 
@@ -45,6 +51,8 @@ export default function CustomOrderPage() {
       form.reset();
       setImageDataUrl(null);
       setMessage("");
+      setShape("circle");
+      setCharacter("1");
     } catch (err) {
       setStatus("error");
       setErrorMessage(
@@ -77,6 +85,8 @@ export default function CustomOrderPage() {
           <div>
             <LivePreview
               category={categorySlug}
+              shape={shape}
+              character={character}
               imageDataUrl={imageDataUrl}
               message={message}
             />
@@ -128,6 +138,19 @@ export default function CustomOrderPage() {
                 ))}
               </select>
             </div>
+
+            <ShapePicker
+              options={ALL_SHAPE_IDS}
+              shape={shape}
+              character={character}
+              onShapeChange={setShape}
+              onCharacterChange={setCharacter}
+            />
+            <input type="hidden" name="shape" value={shape} />
+            {(shape === "number" || shape === "letter") && (
+              <input type="hidden" name="character" value={character} />
+            )}
+
             <div>
               <label className="text-sm font-semibold text-berry-dark">
                 Upload an image (optional)

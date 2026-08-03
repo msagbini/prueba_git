@@ -5,13 +5,17 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/lib/cart-context";
 import type { Product } from "@/lib/products";
+import type { ShapeId } from "@/lib/shapes";
 import LivePreview from "@/components/LivePreview";
 import StarRating from "@/components/StarRating";
+import ShapePicker from "@/components/ShapePicker";
 
 export default function ProductCustomizer({ product }: { product: Product }) {
   const { addItem } = useCart();
   const router = useRouter();
   const [size, setSize] = useState(product.sizes?.[0] ?? "");
+  const [shape, setShape] = useState<ShapeId>(product.shapeOptions?.[0] ?? "circle");
+  const [character, setCharacter] = useState("1");
   const [quantity, setQuantity] = useState(1);
   const [note, setNote] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
@@ -33,12 +37,25 @@ export default function ProductCustomizer({ product }: { product: Product }) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const shapeLabel = product.shapeOptions
+      ? shape === "number" || shape === "letter"
+        ? `${shape} "${character}"`
+        : shape
+      : null;
+    const details = [
+      note,
+      shapeLabel ? `[shape: ${shapeLabel}]` : "",
+      fileName ? `[image: ${fileName}]` : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
     addItem({
       slug: product.slug,
       name: product.name,
       price: product.price,
       size: size || undefined,
-      note: fileName ? `${note} [image: ${fileName}]`.trim() : note || undefined,
+      note: details || undefined,
       quantity,
     });
     setAdded(true);
@@ -51,6 +68,8 @@ export default function ProductCustomizer({ product }: { product: Product }) {
         <LivePreview
           category={product.category}
           size={size}
+          shape={shape}
+          character={character}
           imageDataUrl={imageDataUrl}
           message={note}
         />
@@ -86,6 +105,16 @@ export default function ProductCustomizer({ product }: { product: Product }) {
                 ))}
               </select>
             </div>
+          )}
+
+          {product.shapeOptions && (
+            <ShapePicker
+              options={product.shapeOptions}
+              shape={shape}
+              character={character}
+              onShapeChange={setShape}
+              onCharacterChange={setCharacter}
+            />
           )}
 
           {product.customizable && (

@@ -14,6 +14,7 @@ export type Product = {
   emoji: string;
   customizable: boolean;
   sizes?: string[];
+  shapeOptions?: import("./shapes").ShapeId[];
   rating: number;
   reviewCount: number;
 };
@@ -56,6 +57,7 @@ export const products: Product[] = [
     emoji: "🖼️",
     customizable: true,
     sizes: ["Round 20cm", "Round 25cm", "A4 Rectangle", "Cupcake Set (12)"],
+    shapeOptions: ["circle", "square", "heart", "star"],
     rating: 5,
     reviewCount: 34,
   },
@@ -95,6 +97,7 @@ export const products: Product[] = [
     emoji: "✂️",
     customizable: true,
     sizes: ["6cm", "8cm", "10cm", "12cm"],
+    shapeOptions: ["circle", "square", "heart", "star", "number", "letter"],
     rating: 5,
     reviewCount: 42,
   },
@@ -108,6 +111,7 @@ export const products: Product[] = [
     emoji: "🍫",
     customizable: true,
     sizes: ["Box of 9", "Box of 16", "Box of 25"],
+    shapeOptions: ["circle", "square", "heart", "star"],
     rating: 5,
     reviewCount: 47,
   },
@@ -120,6 +124,7 @@ export const products: Product[] = [
       "A large chocolate bar with your custom text or short message piped in white or dark chocolate.",
     emoji: "🍫",
     customizable: true,
+    shapeOptions: ["square", "heart", "letter", "number"],
     rating: 4.7,
     reviewCount: 19,
   },
@@ -133,6 +138,7 @@ export const products: Product[] = [
     emoji: "🎂",
     customizable: true,
     sizes: ["Small (10cm)", "Medium (15cm)", "Large (20cm)"],
+    shapeOptions: ["circle", "square", "heart", "star"],
     rating: 4.9,
     reviewCount: 29,
   },
@@ -145,6 +151,7 @@ export const products: Product[] = [
       "A matching name and age topper set, colour-matched to your party theme.",
     emoji: "🎈",
     customizable: true,
+    shapeOptions: ["number", "letter"],
     rating: 4.8,
     reviewCount: 16,
   },

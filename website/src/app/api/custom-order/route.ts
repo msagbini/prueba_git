@@ -12,6 +12,8 @@ export async function POST(request: Request) {
   const category = formData.get("category");
   const message = formData.get("message");
   const image = formData.get("image");
+  const shape = formData.get("shape");
+  const character = formData.get("character");
 
   if (!name || !email || !category) {
     return NextResponse.json(
@@ -27,6 +29,8 @@ export async function POST(request: Request) {
       email,
       category,
       message,
+      shape,
+      character,
       hasImage: image instanceof File && image.size > 0,
     },
   });
