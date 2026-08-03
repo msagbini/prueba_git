@@ -83,6 +83,21 @@ describe('business flows (e2e)', () => {
     expect(me.body.name).toBe('E2E Cleaning Co');
   });
 
+  it('lists the seeded plans and starts the organization on Free', async () => {
+    const plans = await request(server())
+      .get('/plans')
+      .set('Authorization', `Bearer ${ownerAccessToken}`)
+      .expect(200);
+    expect(plans.body.map((p: { code: string }) => p.code)).toEqual(['FREE', 'PRO', 'BUSINESS']);
+
+    const subscription = await request(server())
+      .get('/organizations/me/subscription')
+      .set('Authorization', `Bearer ${ownerAccessToken}`)
+      .expect(200);
+    expect(subscription.body.plan.code).toBe('FREE');
+    expect(subscription.body.status).toBe('ACTIVE');
+  });
+
   it('creates two clients, a service, and a job for the first client', async () => {
     const clientA = await request(server())
       .post('/clients')
