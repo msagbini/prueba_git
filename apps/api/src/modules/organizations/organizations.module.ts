@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
+import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { OrganizationsController } from './organizations.controller';
 import { OrganizationsService } from './organizations.service';
 
-/** Organization settings module (GET/PATCH /organizations/me). Contract-only in Fase 2 — see organizations.service.ts. */
+/** Organization settings module (GET/PATCH /organizations/me). */
 @Module({
+  imports: [AuditLogsModule],
   controllers: [OrganizationsController],
   providers: [OrganizationsService],
 })

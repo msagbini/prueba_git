@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
+import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { MembershipsController } from './memberships.controller';
 import { MembershipsService } from './memberships.service';
 
-/** Membership management module. Contract-only in Fase 2 — see memberships.service.ts. */
+/** Membership management module. */
 @Module({
+  imports: [AuditLogsModule],
   controllers: [MembershipsController],
   providers: [MembershipsService],
 })

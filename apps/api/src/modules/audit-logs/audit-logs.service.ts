@@ -1,4 +1,5 @@
-import { Injectable, NotImplementedException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import type { AuditLog } from '@prisma/client';
 import { TenantContextService } from '../../prisma/tenant-context.service';
 
 /**
@@ -6,8 +7,7 @@ import { TenantContextService } from '../../prisma/tenant-context.service';
  * active organization. Owner/Admin only (see the RBAC matrix in
  * docs/architecture/auth.md). Nothing writes to `audit_logs` through
  * this module — entries are written by the modules whose actions they
- * record. Fase 2 scope note: see `organizations.service.ts` for the
- * pattern this follows.
+ * record, via `AuditLogWriterService`.
  */
 @Injectable()
 export class AuditLogsService {
@@ -18,9 +18,10 @@ export class AuditLogsService {
   constructor(private readonly tenantContext: TenantContextService) {}
 
   /**
-   * Lists records. Stubbed for Fase 3 — see the class-level scope note.
+   * Lists records, most recent first.
+   * @returns every audit log entry for the caller's active organization
    */
-  list(): never {
-    throw new NotImplementedException('Implemented in Fase 3.');
+  list(): Promise<AuditLog[]> {
+    return this.tenantContext.client.auditLog.findMany({ orderBy: { createdAt: 'desc' } });
   }
 }
