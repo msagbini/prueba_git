@@ -1,13 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import { categories } from "@/lib/products";
+import { categories, getCategory } from "@/lib/products";
+import LivePreview from "@/components/LivePreview";
 
 type Status = "idle" | "submitting" | "success" | "error";
 
 export default function CustomOrderPage() {
   const [status, setStatus] = useState<Status>("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  const [categorySlug, setCategorySlug] = useState(categories[0].slug);
+  const [message, setMessage] = useState("");
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setImageDataUrl(null);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setImageDataUrl(reader.result as string);
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -28,6 +43,8 @@ export default function CustomOrderPage() {
       }
       setStatus("success");
       form.reset();
+      setImageDataUrl(null);
+      setMessage("");
     } catch (err) {
       setStatus("error");
       setErrorMessage(
@@ -37,11 +54,11 @@ export default function CustomOrderPage() {
   };
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6">
+    <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
       <h1 className="font-display text-3xl font-bold text-berry-dark">
         Custom Order Form
       </h1>
-      <p className="mt-2 text-foreground/70">
+      <p className="mt-2 max-w-xl text-foreground/70">
         Tell us what you have in mind - upload a photo or design idea and add
         any details. We&apos;ll follow up by email with a quote and timeline.
       </p>
@@ -56,83 +73,101 @@ export default function CustomOrderPage() {
           </p>
         </div>
       ) : (
-        <form
-          onSubmit={handleSubmit}
-          className="mt-8 space-y-5 rounded-2xl border border-berry/10 bg-white/70 p-6"
-        >
+        <div className="mt-8 grid gap-8 md:grid-cols-2">
           <div>
-            <label className="text-sm font-semibold text-berry-dark">
-              Your name
-            </label>
-            <input
-              name="name"
-              required
-              className="mt-1 w-full rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-semibold text-berry-dark">
-              Email
-            </label>
-            <input
-              type="email"
-              name="email"
-              required
-              className="mt-1 w-full rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-semibold text-berry-dark">
-              Category
-            </label>
-            <select
-              name="category"
-              required
-              className="mt-1 w-full rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
-            >
-              {categories.map((c) => (
-                <option key={c.slug} value={c.name}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-sm font-semibold text-berry-dark">
-              Upload an image (optional)
-            </label>
-            <input
-              type="file"
-              name="image"
-              accept="image/*"
-              className="mt-1 w-full rounded-lg border border-dashed border-berry/30 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-full file:border-0 file:bg-blush file:px-3 file:py-1 file:text-berry-dark"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-semibold text-berry-dark">
-              Tell us about your order
-            </label>
-            <textarea
-              name="message"
-              required
-              rows={4}
-              placeholder="Event date, theme, colours, sizes, quantity..."
-              className="mt-1 w-full rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
+            <LivePreview
+              category={categorySlug}
+              imageDataUrl={imageDataUrl}
+              message={message}
             />
           </div>
 
-          {status === "error" && (
-            <p className="text-sm text-red-600">{errorMessage}</p>
-          )}
-
-          <button
-            type="submit"
-            disabled={status === "submitting"}
-            className="w-full rounded-full bg-berry px-6 py-3 font-semibold text-white transition hover:bg-berry-dark disabled:opacity-60"
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-5 rounded-2xl border border-berry/10 bg-white/70 p-6"
           >
-            {status === "submitting" ? "Sending..." : "Submit Custom Order"}
-          </button>
-        </form>
+            <div>
+              <label className="text-sm font-semibold text-berry-dark">
+                Your name
+              </label>
+              <input
+                name="name"
+                required
+                className="mt-1 w-full rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-berry-dark">
+                Email
+              </label>
+              <input
+                type="email"
+                name="email"
+                required
+                className="mt-1 w-full rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-berry-dark">
+                Category
+              </label>
+              <select
+                name="category"
+                required
+                value={getCategory(categorySlug)?.name}
+                onChange={(e) => {
+                  const match = categories.find((c) => c.name === e.target.value);
+                  if (match) setCategorySlug(match.slug);
+                }}
+                className="mt-1 w-full rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
+              >
+                {categories.map((c) => (
+                  <option key={c.slug} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-berry-dark">
+                Upload an image (optional)
+              </label>
+              <input
+                type="file"
+                name="image"
+                accept="image/*"
+                onChange={handleFileChange}
+                className="mt-1 w-full rounded-lg border border-dashed border-berry/30 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-full file:border-0 file:bg-blush file:px-3 file:py-1 file:text-berry-dark"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-berry-dark">
+                Tell us about your order
+              </label>
+              <textarea
+                name="message"
+                required
+                rows={4}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Event date, theme, colours, sizes, quantity..."
+                className="mt-1 w-full rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
+              />
+            </div>
+
+            {status === "error" && (
+              <p className="text-sm text-red-600">{errorMessage}</p>
+            )}
+
+            <button
+              type="submit"
+              disabled={status === "submitting"}
+              className="w-full rounded-full bg-berry px-6 py-3 font-semibold text-white transition hover:bg-berry-dark disabled:opacity-60"
+            >
+              {status === "submitting" ? "Sending..." : "Submit Custom Order"}
+            </button>
+          </form>
+        </div>
       )}
     </div>
   );
