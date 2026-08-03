@@ -58,4 +58,6 @@ phase, since the rest of the system depends on them being solid.
 - `pnpm prisma:migrate` — create/apply a local migration.
 - `pnpm prisma:seed` — seed system roles, permissions and industry
   verticals.
-- `pnpm docs:api` — regenerate `../../docs/api/openapi.yaml`.
+- `pnpm docs:api` — regenerate `../../docs/api/openapi.yaml` (requires a
+  reachable database — it boots the full app to introspect routes, and
+  `PrismaService` connects on startup).

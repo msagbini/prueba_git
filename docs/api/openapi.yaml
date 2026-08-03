@@ -1,0 +1,1335 @@
+openapi: 3.0.0
+paths:
+  /auth/signup:
+    post:
+      operationId: AuthController_signup
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupDto'
+      responses:
+        '201':
+          description: ''
+      tags:
+        - auth
+  /auth/login:
+    post:
+      operationId: AuthController_login
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginDto'
+      responses:
+        '201':
+          description: ''
+      tags:
+        - auth
+  /auth/select-organization:
+    post:
+      operationId: AuthController_selectOrganization
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelectOrganizationDto'
+      responses:
+        '201':
+          description: ''
+      tags:
+        - auth
+  /auth/switch-organization:
+    post:
+      operationId: AuthController_switchOrganization
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SwitchOrganizationDto'
+      responses:
+        '201':
+          description: ''
+      tags:
+        - auth
+  /auth/refresh:
+    post:
+      operationId: AuthController_refresh
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshDto'
+      responses:
+        '201':
+          description: ''
+      tags:
+        - auth
+  /auth/logout:
+    post:
+      operationId: AuthController_logout
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshDto'
+      responses:
+        '204':
+          description: ''
+      tags:
+        - auth
+  /auth/me:
+    get:
+      operationId: AuthController_me
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - auth
+      security:
+        - bearer: []
+  /auth/verify-email:
+    post:
+      operationId: AuthController_verifyEmail
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyEmailDto'
+      responses:
+        '204':
+          description: ''
+      tags:
+        - auth
+  /auth/forgot-password:
+    post:
+      operationId: AuthController_forgotPassword
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordDto'
+      responses:
+        '204':
+          description: ''
+      tags:
+        - auth
+  /auth/reset-password:
+    post:
+      operationId: AuthController_resetPassword
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordDto'
+      responses:
+        '204':
+          description: ''
+      tags:
+        - auth
+  /organizations/me/invitations:
+    post:
+      operationId: AuthController_createInvitation
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteUserDto'
+      responses:
+        '204':
+          description: ''
+      tags:
+        - auth
+      security:
+        - bearer: []
+  /invitations/{token}:
+    get:
+      operationId: AuthController_getInvitation
+      parameters:
+        - name: token
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - auth
+  /invitations/{token}/accept:
+    post:
+      operationId: AuthController_acceptInvitation
+      parameters:
+        - name: token
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptInvitationDto'
+      responses:
+        '201':
+          description: ''
+      tags:
+        - auth
+  /organizations/me:
+    get:
+      operationId: OrganizationsController_getMine
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - organizations
+      security:
+        - bearer: []
+    patch:
+      operationId: OrganizationsController_updateMine
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrganizationDto'
+      responses:
+        '200':
+          description: ''
+      tags:
+        - organizations
+      security:
+        - bearer: []
+  /organizations/me/members:
+    get:
+      operationId: MembershipsController_list
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - memberships
+      security:
+        - bearer: []
+  /organizations/me/members/{membershipId}:
+    patch:
+      operationId: MembershipsController_update
+      parameters:
+        - name: membershipId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMembershipDto'
+      responses:
+        '200':
+          description: ''
+      tags:
+        - memberships
+      security:
+        - bearer: []
+    delete:
+      operationId: MembershipsController_remove
+      parameters:
+        - name: membershipId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - memberships
+      security:
+        - bearer: []
+  /users:
+    get:
+      operationId: UsersController_list
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - users
+      security:
+        - bearer: []
+  /users/{id}:
+    get:
+      operationId: UsersController_findOne
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - users
+      security:
+        - bearer: []
+    patch:
+      operationId: UsersController_update
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserDto'
+      responses:
+        '200':
+          description: ''
+      tags:
+        - users
+      security:
+        - bearer: []
+    delete:
+      operationId: UsersController_remove
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - users
+      security:
+        - bearer: []
+  /roles:
+    get:
+      operationId: RolesController_listRoles
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - roles
+      security:
+        - bearer: []
+  /permissions:
+    get:
+      operationId: RolesController_listPermissions
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - roles
+      security:
+        - bearer: []
+  /clients:
+    get:
+      operationId: ClientsController_list
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - clients
+      security:
+        - bearer: []
+    post:
+      operationId: ClientsController_create
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateClientDto'
+      responses:
+        '201':
+          description: ''
+      tags:
+        - clients
+      security:
+        - bearer: []
+  /clients/{id}:
+    get:
+      operationId: ClientsController_findOne
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - clients
+      security:
+        - bearer: []
+    patch:
+      operationId: ClientsController_update
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateClientDto'
+      responses:
+        '200':
+          description: ''
+      tags:
+        - clients
+      security:
+        - bearer: []
+    delete:
+      operationId: ClientsController_remove
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - clients
+      security:
+        - bearer: []
+  /clients/{id}/addresses:
+    get:
+      operationId: ClientsController_listAddresses
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - clients
+      security:
+        - bearer: []
+    post:
+      operationId: ClientsController_createAddress
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateClientAddressDto'
+      responses:
+        '201':
+          description: ''
+      tags:
+        - clients
+      security:
+        - bearer: []
+  /service-categories:
+    get:
+      operationId: ServicesController_listCategories
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - services
+      security:
+        - bearer: []
+    post:
+      operationId: ServicesController_createCategory
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateServiceCategoryDto'
+      responses:
+        '201':
+          description: ''
+      tags:
+        - services
+      security:
+        - bearer: []
+  /services:
+    get:
+      operationId: ServicesController_list
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - services
+      security:
+        - bearer: []
+    post:
+      operationId: ServicesController_create
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateServiceDto'
+      responses:
+        '201':
+          description: ''
+      tags:
+        - services
+      security:
+        - bearer: []
+  /services/{id}:
+    get:
+      operationId: ServicesController_findOne
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - services
+      security:
+        - bearer: []
+    patch:
+      operationId: ServicesController_update
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateServiceDto'
+      responses:
+        '200':
+          description: ''
+      tags:
+        - services
+      security:
+        - bearer: []
+    delete:
+      operationId: ServicesController_remove
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - services
+      security:
+        - bearer: []
+  /jobs:
+    get:
+      operationId: JobsController_list
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - jobs
+      security:
+        - bearer: []
+    post:
+      operationId: JobsController_create
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateJobDto'
+      responses:
+        '201':
+          description: ''
+      tags:
+        - jobs
+      security:
+        - bearer: []
+  /jobs/{id}:
+    get:
+      operationId: JobsController_findOne
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - jobs
+      security:
+        - bearer: []
+    patch:
+      operationId: JobsController_update
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateJobDto'
+      responses:
+        '200':
+          description: ''
+      tags:
+        - jobs
+      security:
+        - bearer: []
+    delete:
+      operationId: JobsController_remove
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - jobs
+      security:
+        - bearer: []
+  /jobs/{id}/assignments:
+    post:
+      operationId: JobsController_createAssignment
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateJobAssignmentDto'
+      responses:
+        '201':
+          description: ''
+      tags:
+        - jobs
+      security:
+        - bearer: []
+  /jobs/{id}/services:
+    post:
+      operationId: JobsController_createJobService
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateJobServiceDto'
+      responses:
+        '201':
+          description: ''
+      tags:
+        - jobs
+      security:
+        - bearer: []
+  /staff:
+    get:
+      operationId: StaffController_list
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - staff
+      security:
+        - bearer: []
+  /staff/{id}:
+    get:
+      operationId: StaffController_findOne
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - staff
+      security:
+        - bearer: []
+    patch:
+      operationId: StaffController_update
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStaffDto'
+      responses:
+        '200':
+          description: ''
+      tags:
+        - staff
+      security:
+        - bearer: []
+  /invoices:
+    get:
+      operationId: InvoicesController_list
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - invoices
+      security:
+        - bearer: []
+    post:
+      operationId: InvoicesController_create
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInvoiceDto'
+      responses:
+        '201':
+          description: ''
+      tags:
+        - invoices
+      security:
+        - bearer: []
+  /invoices/{id}:
+    get:
+      operationId: InvoicesController_findOne
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - invoices
+      security:
+        - bearer: []
+    patch:
+      operationId: InvoicesController_update
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateInvoiceDto'
+      responses:
+        '200':
+          description: ''
+      tags:
+        - invoices
+      security:
+        - bearer: []
+  /invoices/{id}/line-items:
+    post:
+      operationId: InvoicesController_createLineItem
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInvoiceLineItemDto'
+      responses:
+        '201':
+          description: ''
+      tags:
+        - invoices
+      security:
+        - bearer: []
+  /payments:
+    get:
+      operationId: PaymentsController_list
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - payments
+      security:
+        - bearer: []
+    post:
+      operationId: PaymentsController_create
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePaymentDto'
+      responses:
+        '201':
+          description: ''
+      tags:
+        - payments
+      security:
+        - bearer: []
+  /payments/{id}:
+    get:
+      operationId: PaymentsController_findOne
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - payments
+      security:
+        - bearer: []
+  /audit-logs:
+    get:
+      operationId: AuditLogsController_list
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - audit-logs
+      security:
+        - bearer: []
+  /health:
+    get:
+      operationId: HealthController_check
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - health
+info:
+  title: DOS API
+  description: >-
+    Digital Operations System backend API. Every route except the ones marked
+    @Public() requires a Bearer access token scoped to the caller's active
+    organization.
+  version: 0.1.0
+  contact: {}
+tags: []
+servers: []
+components:
+  securitySchemes:
+    bearer:
+      scheme: bearer
+      bearerFormat: JWT
+      type: http
+  schemas:
+    SignupDto:
+      type: object
+      properties:
+        organizationName:
+          type: string
+        industryVerticalCode:
+          type: string
+          enum:
+            - CLEANING
+            - CONSTRUCTION_CLEANING
+            - MAINTENANCE
+            - LANDSCAPING
+            - GENERAL_FIELD_SERVICE
+        ownerEmail:
+          type: string
+        ownerFirstName:
+          type: string
+        ownerLastName:
+          type: string
+        password:
+          type: string
+      required:
+        - organizationName
+        - industryVerticalCode
+        - ownerEmail
+        - ownerFirstName
+        - ownerLastName
+        - password
+    LoginDto:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+      required:
+        - email
+        - password
+    SelectOrganizationDto:
+      type: object
+      properties:
+        selectionToken:
+          type: string
+          description: The short-lived selection token returned by POST /auth/login.
+        organizationId:
+          type: string
+      required:
+        - selectionToken
+        - organizationId
+    SwitchOrganizationDto:
+      type: object
+      properties:
+        organizationId:
+          type: string
+      required:
+        - organizationId
+    RefreshDto:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+    VerifyEmailDto:
+      type: object
+      properties:
+        token:
+          type: string
+      required:
+        - token
+    ForgotPasswordDto:
+      type: object
+      properties:
+        email:
+          type: string
+      required:
+        - email
+    ResetPasswordDto:
+      type: object
+      properties:
+        token:
+          type: string
+        newPassword:
+          type: string
+      required:
+        - token
+        - newPassword
+    InviteUserDto:
+      type: object
+      properties:
+        email:
+          type: string
+        roleCode:
+          type: string
+          enum:
+            - OWNER
+            - ADMIN
+            - DISPATCHER
+            - STAFF
+            - CLIENT
+      required:
+        - email
+        - roleCode
+    AcceptInvitationDto:
+      type: object
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        password:
+          type: string
+    UpdateOrganizationDto:
+      type: object
+      properties:
+        name:
+          type: string
+        timezone:
+          type: string
+        locale:
+          type: string
+        settings:
+          type: object
+          description: >-
+            Vertical-specific configuration — see Organization.settings in
+            schema.prisma.
+    UpdateMembershipDto:
+      type: object
+      properties:
+        roleCode:
+          type: string
+          enum:
+            - OWNER
+            - ADMIN
+            - DISPATCHER
+            - STAFF
+            - CLIENT
+        status:
+          type: string
+          enum:
+            - INVITED
+            - ACTIVE
+            - SUSPENDED
+    UpdateUserDto:
+      type: object
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phone:
+          type: string
+    CreateClientDto:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum:
+            - RESIDENTIAL
+            - COMMERCIAL
+        primaryContactName:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        notes:
+          type: string
+      required:
+        - name
+        - type
+    UpdateClientDto:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum:
+            - RESIDENTIAL
+            - COMMERCIAL
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - INACTIVE
+        primaryContactName:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        notes:
+          type: string
+    CreateClientAddressDto:
+      type: object
+      properties:
+        label:
+          type: string
+          enum:
+            - BILLING
+            - SERVICE
+        addressLine1:
+          type: string
+        addressLine2:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        postalCode:
+          type: string
+        country:
+          type: string
+        lat:
+          type: number
+        lng:
+          type: number
+      required:
+        - label
+        - addressLine1
+        - city
+        - state
+        - postalCode
+        - country
+    CreateServiceCategoryDto:
+      type: object
+      properties:
+        name:
+          type: string
+      required:
+        - name
+    CreateServiceDto:
+      type: object
+      properties:
+        categoryId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        pricingType:
+          type: string
+          enum:
+            - HOURLY
+            - FIXED
+            - PER_UNIT
+        unitLabel:
+          type: string
+          description: Required when pricingType is PER_UNIT, e.g. "sq ft".
+        basePrice:
+          type: number
+        isActive:
+          type: boolean
+          default: true
+      required:
+        - name
+        - pricingType
+        - basePrice
+    UpdateServiceDto:
+      type: object
+      properties:
+        categoryId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        pricingType:
+          type: string
+          enum:
+            - HOURLY
+            - FIXED
+            - PER_UNIT
+        unitLabel:
+          type: string
+        basePrice:
+          type: number
+        isActive:
+          type: boolean
+    CreateJobDto:
+      type: object
+      properties:
+        clientId:
+          type: string
+        serviceAddressId:
+          type: string
+        scheduledStart:
+          type: string
+        scheduledEnd:
+          type: string
+        recurrenceRule:
+          type: string
+          description: RRULE string (RFC 5545) for recurring jobs.
+        notes:
+          type: string
+      required:
+        - clientId
+    UpdateJobDto:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - DRAFT
+            - SCHEDULED
+            - IN_PROGRESS
+            - COMPLETED
+            - CANCELLED
+        serviceAddressId:
+          type: string
+        scheduledStart:
+          type: string
+        scheduledEnd:
+          type: string
+        notes:
+          type: string
+    CreateJobAssignmentDto:
+      type: object
+      properties:
+        membershipId:
+          type: string
+          description: The OrganizationMembership id of the staff member to assign.
+      required:
+        - membershipId
+    CreateJobServiceDto:
+      type: object
+      properties:
+        serviceId:
+          type: string
+        quantity:
+          type: number
+        notes:
+          type: string
+      required:
+        - serviceId
+        - quantity
+    UpdateStaffDto:
+      type: object
+      properties:
+        employeeCode:
+          type: string
+        hourlyRate:
+          type: number
+        hireDate:
+          type: string
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - INACTIVE
+    CreateInvoiceDto:
+      type: object
+      properties:
+        clientId:
+          type: string
+        issueDate:
+          type: string
+        dueDate:
+          type: string
+      required:
+        - clientId
+        - issueDate
+        - dueDate
+    UpdateInvoiceDto:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - DRAFT
+            - SENT
+            - PAID
+            - OVERDUE
+            - VOID
+        dueDate:
+          type: string
+    CreateInvoiceLineItemDto:
+      type: object
+      properties:
+        jobId:
+          type: string
+        serviceId:
+          type: string
+        description:
+          type: string
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+      required:
+        - description
+        - quantity
+        - unitPrice
+    CreatePaymentDto:
+      type: object
+      properties:
+        invoiceId:
+          type: string
+        amount:
+          type: number
+        method:
+          type: string
+          enum:
+            - CASH
+            - CHECK
+            - CARD
+            - BANK_TRANSFER
+            - OTHER
+        referenceNumber:
+          type: string
+        notes:
+          type: string
+      required:
+        - invoiceId
+        - amount
+        - method

@@ -205,5 +205,29 @@ audit-logs}/`): controllers, DTOs (class-validator + Swagger), modules
   - `app.module.ts` now imports all 12 feature modules (11 stub + auth)
     alongside `PrismaModule`/`HealthModule`.
 
-_(Continued as later steps land — OpenAPI export, web/mobile scaffolds,
-CI.)_
+- **OpenAPI export**: `src/swagger.ts` factors the `DocumentBuilder`
+  config out of `main.ts` so the live `/api/docs` and the exported file
+  can never drift apart; `src/scripts/generate-openapi.ts` boots the full
+  app, builds the document, and writes it to `docs/api/openapi.yaml` via
+  `js-yaml`. `pnpm docs:api` now runs `nest build && node
+dist/scripts/generate-openapi.js` — replaced the original bootstrap
+  placeholder (`... || true`, silently swallowing failures) with a real
+  implementation.
+  - Found and fixed a fourth instance of the stale-`tsconfig.tsbuildinfo`
+    bug first hit in the identity-schema step: this time a plain `tsc
+--noEmit` typecheck (harmless on its own) left a buildinfo file that
+    caused a _subsequent_ `nest build` to silently skip re-emitting most
+    of `src/` — only the 2-3 files touched in this step came out, so
+    `dist/app.module.js` and everything else were missing entirely and
+    the generated script failed with `Cannot find module '../app.module'`.
+    Root-caused and fixed for good this time by setting
+    `incremental: false` in the shared `@dos/config/typescript/nest.json`
+    base — the previous two times were treated as one-off local-dev
+    annoyances; a third live occurrence made clear it needed a structural
+    fix, not another manual `rm`.
+  - **Verified**: generated `docs/api/openapi.yaml` has all 58 routes
+    across 39 paths, all 13 controller tags, the `bearer` security scheme
+    correctly applied to authenticated routes and correctly absent from
+    `/health`.
+
+_(Continued as later steps land — web/mobile scaffolds, CI.)_

@@ -7,6 +7,11 @@
     "target": "ES2022",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "incremental": true
+    // Deliberately off: a stale tsconfig.tsbuildinfo (e.g. left behind by
+    // a plain `tsc --noEmit` typecheck) has twice caused `nest build` to
+    // silently skip re-emitting files it believed were still current —
+    // see docs/technical-log/phase-2.md. Build times here don't need the
+    // incremental cache badly enough to justify that failure mode.
+    "incremental": false
   }
 }
