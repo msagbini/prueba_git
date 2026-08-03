@@ -1,6 +1,6 @@
 # Fase 2 — Base técnica: technical log
 
-Status: **in progress**
+Status: **Fase 2 completa — esperando aprobación para Fase 3**
 
 Tracks what was actually built during Fase 2, in the order it happened, so
 decisions have a paper trail independent of the ADRs (which capture _why_;
@@ -372,3 +372,75 @@ build`; `pnpm docs:check-readmes` passes (16/16). The Postgres-via-Docker
     seed/test commands against this container's native Postgres 16
     instance, which is how every prior step in this phase was verified
     too); the workflow YAML mirrors the exact commands confirmed to work.
+
+## Fase 2 — cierre
+
+Todos los entregables planeados para Fase 2 ("Base técnica") están
+completos, commiteados y pusheados a `claude/dos-saas-product-fv8j11`.
+Resumen de lo construido:
+
+- **Monorepo**: pnpm workspaces + Turborepo, 3 apps (`api`, `web`,
+  `mobile`) + 1 paquete compartido (`config`), tooling común (ESLint 9 +
+  `eslint-plugin-jsdoc`, Prettier, TypeScript bases, Husky/lint-staged/
+  commitlint) y un check de CI que hace exigible — no solo aspiracional —
+  la regla de "todo módulo tiene README" (16/16 hoy).
+- **Base de datos**: `schema.prisma` con 23 modelos (11 de identidad/
+  tenancy, 12 de negocio), 4 migraciones aplicadas y verificadas contra
+  Postgres 16 real, Row-Level Security fail-closed en cada tabla de
+  negocio más los 4 bootstrap policies documentados en ADR 0006, seed de
+  roles/permisos/verticals idempotente.
+- **API** (`apps/api`, NestJS): wiring multi-tenant real (CLS + Prisma
+  Client Extension + transacción por request con `SET LOCAL`), módulo de
+  auth completo (signup, login single/multi-org, refresh con rotación y
+  revocación de familia, invitaciones, RBAC de 5 roles fijos), 11 módulos
+  de negocio con contrato completo (DTOs, Swagger, guards) y stub de
+  servicio (`NotImplementedException`) — 58 rutas en total, exportadas a
+  `docs/api/openapi.yaml`.
+- **Web** (`apps/web`, Vite + React 18 + Tailwind puro): shell de rutas,
+  cliente de API tipado, contexto de auth — scaffold de enrutamiento, no
+  pantallas finales (Fase 5).
+- **Mobile** (`apps/mobile`, React Native bare + TS): stack de navegación
+  con una pantalla placeholder — scaffold de navegación, no pantallas
+  finales (Fase 6).
+- **CI**: `turbo run lint build test` + verificación de READMEs en cada
+  push/PR, contra una base de datos Postgres real provisionada igual que
+  en desarrollo local.
+- **Documentación**: 6 ADRs, 3 documentos de arquitectura (overview,
+  multi-tenancy, auth), ERD verificado campo a campo contra el schema,
+  contrato OpenAPI generado, y este log con el detalle de cada paso
+  incluyendo los bugs reales encontrados y cómo se corrigieron.
+
+**Reglas de construcción del producto — verificación de cumplimiento**:
+sin campos/tablas inventados (ERD revisado línea a línea contra el
+schema), sin código antes de arquitectura (RLS, esquema de datos y
+contrato de auth definidos y aprobados antes de escribir el primer
+módulo), sin documentación faltante (README por módulo exigido por CI),
+sin soluciones frágiles o temporales (cada bug real encontrado —
+listados arriba en cada sección — se corrigió en la causa raíz, no con
+un parche; ver por ejemplo el fix de `packageExtensions` en lugar de fijar
+una versión al azar), sin hardcoding innecesario, sin placeholders vacíos
+(los módulos de negocio son stubs explícitos con `NotImplementedException`,
+no implementaciones falsas), producto real y no demo (base de datos real,
+autenticación real, RLS real, verificado en vivo en cada paso, no
+simulado).
+
+**Decisiones abiertas menores, no bloqueantes** (ya anotadas en el plan
+de Fase 2, se resuelven en fases posteriores): proveedor de email
+transaccional concreto (hoy `EmailService` solo loggea a consola detrás
+de una interfaz real); confirmar que la imagen de despliegue soporta los
+bindings nativos de `argon2` antes de Fase 7 (infraestructura).
+
+Al cerrar el log se encontró una inconsistencia menor entre el plan
+original y lo realmente construido: el plan de arquitectura mencionaba
+`packages/shared-types/` (DTOs/enums compartidos api↔web↔mobile), pero
+ninguno de los 17 pasos ejecutados incluía crearlo, y hoy no existe.
+Corregido eliminando la referencia de `README.md` en vez de dejar
+documentación que describe algo que no está construido — se propone como
+candidato real para Fase 3, cuando `web`/`mobile` empiecen a consumir
+tipos de request/response del API más allá de auth.
+
+**Fase 2 completa — esperando aprobación para Fase 3** (MVP operativo:
+implementación real de los módulos de negocio hoy stub — clientes,
+servicios, jobs/scheduling, staff, facturación, pagos). Por la regla del
+producto de no avanzar de fase sin aprobación, Fase 3 no comienza hasta
+que el stakeholder lo confirme explícitamente.

@@ -8,12 +8,14 @@ maintenance, landscaping and general field services.
 
 ## Status
 
-Currently in **Fase 2 — Base técnica**: this repository contains the
-foundational architecture (database schema, API contract, authentication,
-RBAC, monorepo structure) rather than finished product features. See
-[`docs/technical-log/`](docs/technical-log/) for the phase-by-phase build
-log and [`docs/architecture/overview.md`](docs/architecture/overview.md) for
-the system design.
+**Fase 2 — Base técnica: complete**, awaiting approval to start Fase 3.
+This repository currently contains the foundational architecture (database
+schema, API contract, authentication, RBAC, monorepo structure, web/mobile
+scaffolds, CI) rather than finished product features — the business
+modules (clients, jobs, staff, billing) are stubbed on purpose. See
+[`docs/technical-log/phase-2.md`](docs/technical-log/phase-2.md) for the
+full build log and [`docs/architecture/overview.md`](docs/architecture/overview.md)
+for the system design.
 
 ## Repository layout
 
@@ -23,7 +25,6 @@ apps/
   web/      React SPA — admin dashboard and client portal
   mobile/   React Native app — field staff mobile experience
 packages/
-  shared-types/   DTOs and enums shared across api/web/mobile
   config/         Shared ESLint, Prettier and TypeScript configuration
 docs/
   architecture/   System design documents
