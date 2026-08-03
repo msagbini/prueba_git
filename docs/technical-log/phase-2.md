@@ -180,5 +180,30 @@ this captures _what and when_).
     again (204, idempotent); forgot-password → reset-password → old
     password rejected, new password accepted.
 
-_(Continued as later steps land — business module skeletons, web/mobile
-scaffolds, CI.)_
+- **Business module skeletons** (`apps/api/src/modules/{organizations,
+memberships,users,roles,clients,services,jobs,staff,invoices,payments,
+audit-logs}/`): controllers, DTOs (class-validator + Swagger), modules
+  and stub services for all 11 remaining modules from the API contract in
+  `docs/technical-log/phase-2.md`'s planning notes — 58 routes total.
+  Every stub method throws `NotImplementedException` per the accepted
+  Fase 2 pattern (root `CONTRIBUTING.md`); `RolesGuard`/`@Roles()` applied
+  per the RBAC matrix where the route is Owner/Admin-only
+  (`PATCH /organizations/me`, the memberships module, `/audit-logs`).
+  - **`roles` is the one fully-implemented (non-stub) module** — `GET
+/roles`/`GET /permissions` are plain reads of global, non-tenant
+    reference data with no business logic to defer.
+  - **Verified live**: booted the app and confirmed all 58 routes
+    register (`RouterExplorer` log lines) matching the planned contract;
+    confirmed `JwtAuthGuard` returns 401 on `/clients` and `/roles`
+    without a token; confirmed an authenticated stub route
+    (`GET /clients`) returns 501 (`NotImplementedException`) rather than
+    erroring some other way; confirmed the real `/roles`/`/permissions`
+    endpoints return 200 with the seeded data; confirmed
+    `RolesGuard`/`@Roles(OWNER, ADMIN)` lets an Owner through to the
+    stubbed `/audit-logs` (501, not 403) — proving the guard chain and
+    the stub boundary compose correctly together.
+  - `app.module.ts` now imports all 12 feature modules (11 stub + auth)
+    alongside `PrismaModule`/`HealthModule`.
+
+_(Continued as later steps land — OpenAPI export, web/mobile scaffolds,
+CI.)_
