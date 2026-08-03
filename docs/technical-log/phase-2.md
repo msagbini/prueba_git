@@ -230,4 +230,39 @@ dist/scripts/generate-openapi.js` — replaced the original bootstrap
     correctly applied to authenticated routes and correctly absent from
     `/health`.
 
-_(Continued as later steps land — web/mobile scaffolds, CI.)_
+- **apps/web scaffold** (`apps/web/`): Vite + React 18 + TypeScript SPA,
+  Tailwind CSS with no component library (per the confirmed UI decision) —
+  a routing + API-client scaffold, not finished screens (those are Fase 5).
+  `src/api/client.ts` (typed `apiFetch` wrapper, in-memory-only access
+  token per `docs/architecture/auth.md`, `credentials: 'include'` for the
+  httpOnly refresh cookie), `src/context/AuthContext.tsx`
+  (`AuthProvider`/`useAuth`, `login`/`logout`), `src/pages/{LoginPage,
+DashboardPage}.tsx`, `src/App.tsx` (`RequireAuth` guard + `/login` and
+  protected `/` routes).
+  - Found and fixed two real bugs, both from the same root cause: the
+    package's `"type": "module"` (needed for Vite's native ESM config)
+    broke the two CJS tooling files that use `require`/`module.exports` —
+    `eslint.config.js` and `postcss.config.js` both failed with "require is
+    not defined in ES module scope". Fixed by renaming both to `.cjs`
+    (ESLint's own documented fix for this exact conflict), including
+    updating `eslint.config.cjs`'s self-referencing `files` glob to match
+    the new names.
+  - Found and fixed a third bug, this one in the shared config: linting
+    `eslint.config.cjs` itself under `@dos/config/eslint/react.js` crashed
+    with `TypeError: contextOrFilename.getFilename is not a function`
+    inside the `react/display-name` rule. Root cause was
+    `settings.react.version: 'detect'`, which auto-detects by resolving
+    React from the linted file's own context — that breaks for non-React
+    files like a config file linted under a ruleset that (deliberately)
+    still applies to it. Fixed by pinning `settings.react.version` to
+    `'18.3'` instead of `'detect'` in `packages/config/eslint/react.js`,
+    with a comment explaining why pinning is required, not just stylistic.
+  - **Verified**: `pnpm lint` (0 errors, 0 warnings after adding the
+    missing JSDoc on every exported/local function), `npx tsc -b` clean,
+    `vite build` produces a working `dist/` bundle, `node
+scripts/check-readmes.mjs` passes from the repo root (15/15 modules), and
+    a live `vite` dev server serves the app shell correctly at
+    `http://localhost:5173` (confirmed via `curl`, correct `<title>` and
+    root mount point).
+
+_(Continued as later steps land — mobile scaffold, CI.)_
