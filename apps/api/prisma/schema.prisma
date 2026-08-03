@@ -253,10 +253,15 @@ model UserInvitation {
   status          InvitationStatus @default(PENDING)
   expiresAt       DateTime         @map("expires_at")
   createdAt       DateTime         @default(now()) @map("created_at")
+  /// Only set when roleId is the Client role — carried through to the
+  /// OrganizationMembership created on acceptance, same meaning as
+  /// OrganizationMembership.clientId.
+  clientId        String?          @map("client_id") @db.Uuid
 
   organization Organization @relation(fields: [organizationId], references: [id])
   role         Role         @relation(fields: [roleId], references: [id])
   invitedBy    User         @relation("InvitedBy", fields: [invitedByUserId], references: [id])
+  client       Client?      @relation(fields: [clientId], references: [id])
 
   @@index([organizationId])
   @@map("user_invitations")
@@ -361,6 +366,7 @@ model Client {
   memberships  OrganizationMembership[]
   jobs         Job[]
   invoices     Invoice[]
+  invitations  UserInvitation[]
 
   @@index([organizationId])
   @@map("clients")

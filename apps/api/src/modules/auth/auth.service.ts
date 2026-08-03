@@ -466,6 +466,26 @@ export class AuthService {
       }),
     ]);
 
+    // A Client-role membership must be linked to the Client record it
+    // represents (OrganizationMembership.clientId) — see
+    // docs/architecture/multi-tenancy.md. Every other role must NOT carry
+    // a clientId, since it would be meaningless for them.
+    if (dto.roleCode === RoleCode.CLIENT) {
+      if (!dto.clientId) {
+        throw new BadRequestException('clientId is required when roleCode is CLIENT.');
+      }
+      const client = await this.tenantContext.client.client.findFirst({
+        where: { id: dto.clientId, deletedAt: null },
+      });
+      if (!client) {
+        throw new BadRequestException(
+          'clientId does not belong to the caller’s active organization.',
+        );
+      }
+    } else if (dto.clientId) {
+      throw new BadRequestException('clientId is only meaningful when roleCode is CLIENT.');
+    }
+
     const rawToken = generateRawToken();
     await this.tenantContext.client.userInvitation.create({
       data: {
@@ -475,6 +495,7 @@ export class AuthService {
         invitedByUserId: currentUser.sub,
         tokenHash: hashToken(rawToken),
         expiresAt: daysFromNow(INVITATION_TTL_DAYS),
+        clientId: dto.roleCode === RoleCode.CLIENT ? dto.clientId : undefined,
       },
     });
 
@@ -544,7 +565,12 @@ export class AuthService {
 
     return runInTenantTransaction(this.prisma, invitation.organizationId, async (tx) => {
       const membership = await tx.organizationMembership.create({
-        data: { organizationId: invitation.organizationId, userId, roleId: invitation.roleId },
+        data: {
+          organizationId: invitation.organizationId,
+          userId,
+          roleId: invitation.roleId,
+          clientId: invitation.clientId,
+        },
       });
       // A Staff membership always gets an (initially blank) StaffProfile —
       // see the "creation happens via the invitation flow" note in
