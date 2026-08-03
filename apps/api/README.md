@@ -39,22 +39,31 @@ prisma/
                          RLS policies
   seed.ts                 Seeds system roles/permissions and industry
                          verticals
+test/
+  business-flows.e2e.spec.ts  Full-app e2e suite (supertest, real Postgres)
+                               covering every business module together —
+                               RBAC, row-level visibility, audit trail
 ```
 
-## Fase 2 scope note
+## Status
 
-Per the product's build rules ("no code before architecture", see root
-`CONTRIBUTING.md`), most `modules/*` in this Fase 2 snapshot expose their
-contract (controllers, DTOs, Swagger docs) with service methods stubbed via
-`NotImplementedException` — feature logic lands in Fase 3. The `auth`
-module and the multi-tenant Prisma wiring are implemented for real in this
-phase, since the rest of the system depends on them being solid.
+All 11 business modules (`modules/*`) are implemented for real — see
+[`../../docs/technical-log/phase-3.md`](../../docs/technical-log/phase-3.md)
+for the build log. The `roles` module is read-only reference data with no
+stub history; every other module has full CRUD-and-then-some behind its
+Fase 2 contract (controllers, DTOs, Swagger docs), RBAC permission guards,
+and — where the schema calls for it — row-level visibility, soft-delete/
+deactivation, and audit logging.
 
 ## Scripts
 
 - `pnpm dev` — start in watch mode.
 - `pnpm build` / `pnpm start` — production build and run.
-- `pnpm lint` / `pnpm test` — lint and test this app.
+- `pnpm lint` / `pnpm test` — lint and test this app. `pnpm test` runs both
+  `src/prisma/tenant-scoping.integration.spec.ts` (multi-tenant isolation)
+  and `test/business-flows.e2e.spec.ts` (full business-flow e2e coverage)
+  against a real Postgres database — set up `.env` and a running database
+  first (see "Getting started" above), the same as running the app itself.
 - `pnpm prisma:migrate` — create/apply a local migration.
 - `pnpm prisma:seed` — seed system roles, permissions and industry
   verticals.
