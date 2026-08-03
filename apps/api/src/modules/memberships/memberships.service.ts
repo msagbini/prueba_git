@@ -70,6 +70,19 @@ export class MembershipsService {
       include: { user: { select: SAFE_USER_SELECT }, role: true },
     });
 
+    // Promoting into Staff always gets a StaffProfile, same as accepting a
+    // Staff invitation — see the note in staff.service.ts.
+    if (before.role.code !== RoleCode.STAFF && after.role.code === RoleCode.STAFF) {
+      const hasProfile = await this.tenantContext.client.staffProfile.findFirst({
+        where: { membershipId },
+      });
+      if (!hasProfile) {
+        await this.tenantContext.client.staffProfile.create({
+          data: { organizationId, membershipId },
+        });
+      }
+    }
+
     await this.auditLog.record({
       organizationId,
       actorUserId,

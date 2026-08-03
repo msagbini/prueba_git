@@ -546,6 +546,16 @@ export class AuthService {
       const membership = await tx.organizationMembership.create({
         data: { organizationId: invitation.organizationId, userId, roleId: invitation.roleId },
       });
+      // A Staff membership always gets an (initially blank) StaffProfile —
+      // see the "creation happens via the invitation flow" note in
+      // staff.service.ts. Owner/Admin/Dispatcher/Client memberships don't
+      // get one: StaffProfile only holds field-employee HR data
+      // (employeeCode, hourlyRate, hireDate).
+      if (invitation.role.code === RoleCode.STAFF) {
+        await tx.staffProfile.create({
+          data: { organizationId: invitation.organizationId, membershipId: membership.id },
+        });
+      }
       await tx.userInvitation.update({
         where: { id: invitation.id },
         data: { status: 'ACCEPTED' },

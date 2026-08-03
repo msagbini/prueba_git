@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
+import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { StaffController } from './staff.controller';
 import { StaffService } from './staff.service';
 
-/** Staff module. Contract-only in Fase 2 — see staff.service.ts. */
+/** Staff module. */
 @Module({
+  imports: [AuditLogsModule],
   controllers: [StaffController],
   providers: [StaffService],
 })
