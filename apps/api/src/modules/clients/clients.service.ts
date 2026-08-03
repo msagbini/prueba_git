@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Client, ClientAddress } from '@prisma/client';
 import { TenantContextService } from '../../prisma/tenant-context.service';
 import { AuditLogWriterService } from '../audit-logs/audit-log-writer.service';
+import { BillingService } from '../billing/billing.service';
 import type { CreateClientDto } from './dto/create-client.dto';
 import type { UpdateClientDto } from './dto/update-client.dto';
 import type { CreateClientAddressDto } from './dto/create-client-address.dto';
@@ -10,7 +11,8 @@ import type { CreateClientAddressDto } from './dto/create-client-address.dto';
  * Client (customer) records and their service/billing addresses.
  * `remove` soft-deletes (sets `deletedAt`) rather than deleting the row —
  * a client's history (jobs, invoices) must stay attributable even after
- * they're no longer active.
+ * they're no longer active. `create` is gated by the active plan's
+ * `maxClients` limit (see `BillingService.assertClientLimit`).
  */
 @Injectable()
 export class ClientsService {
@@ -18,10 +20,12 @@ export class ClientsService {
    * Constructs the service around the tenant-scoped Prisma client.
    * @param tenantContext the current request's tenant-scoped Prisma client
    * @param auditLog records changes made through this service
+   * @param billing enforces the active plan's client limit
    */
   constructor(
     private readonly tenantContext: TenantContextService,
     private readonly auditLog: AuditLogWriterService,
+    private readonly billing: BillingService,
   ) {}
 
   /**
@@ -43,6 +47,8 @@ export class ClientsService {
    * @returns the created record
    */
   async create(organizationId: string, actorUserId: string, dto: CreateClientDto): Promise<Client> {
+    await this.billing.assertMineClientLimit();
+
     const client = await this.tenantContext.client.client.create({
       data: {
         organizationId,

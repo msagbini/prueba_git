@@ -3,6 +3,7 @@ import { MembershipStatus, RoleCode, type OrganizationMembership, type Role } fr
 import { SAFE_USER_SELECT, type SafeUser } from '../../common/safe-user';
 import { TenantContextService } from '../../prisma/tenant-context.service';
 import { AuditLogWriterService } from '../audit-logs/audit-log-writer.service';
+import { BillingService } from '../billing/billing.service';
 import type { UpdateMembershipDto } from './dto/update-membership.dto';
 
 /** A membership row joined with the fields a members list needs to display. */
@@ -22,10 +23,12 @@ export class MembershipsService {
    * Constructs the service around the tenant-scoped Prisma client.
    * @param tenantContext the current request's tenant-scoped Prisma client
    * @param auditLog records changes made through this service
+   * @param billing enforces the active plan's staff limit when promoting a membership to Staff
    */
   constructor(
     private readonly tenantContext: TenantContextService,
     private readonly auditLog: AuditLogWriterService,
+    private readonly billing: BillingService,
   ) {}
 
   /**
@@ -59,6 +62,11 @@ export class MembershipsService {
     const deactivating = dto.status !== undefined && dto.status !== MembershipStatus.ACTIVE;
     if (before.role.code === RoleCode.OWNER && (demotingFromOwner || deactivating)) {
       await this.assertNotLastActiveOwner(membershipId);
+    }
+
+    const promotingToStaff = before.role.code !== RoleCode.STAFF && dto.roleCode === RoleCode.STAFF;
+    if (promotingToStaff) {
+      await this.billing.assertStaffLimit(this.tenantContext.client);
     }
 
     const after = await this.tenantContext.client.organizationMembership.update({

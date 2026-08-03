@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuditLogsModule } from '../audit-logs/audit-logs.module';
+import { BillingModule } from '../billing/billing.module';
 import { MembershipsController } from './memberships.controller';
 import { MembershipsService } from './memberships.service';
 
@@ -10,7 +11,7 @@ import { MembershipsService } from './memberships.service';
  * and the last-Owner guard should exist in exactly one place.
  */
 @Module({
-  imports: [AuditLogsModule],
+  imports: [AuditLogsModule, BillingModule],
   controllers: [MembershipsController],
   providers: [MembershipsService],
   exports: [MembershipsService],

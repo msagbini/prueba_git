@@ -19,6 +19,6 @@ export class BillingController {
    */
   @Get()
   getSubscription() {
-    return this.billingService.getSubscription();
+    return this.billingService.getMineSubscription();
   }
 }

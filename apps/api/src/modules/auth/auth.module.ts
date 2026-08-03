@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { BillingModule } from '../billing/billing.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -28,6 +29,7 @@ import { ConsoleEmailService } from './email/console-email.service';
     // call in AuthService (they differ per token type: access token vs.
     // the short-lived org-selection token), so no default is configured here.
     JwtModule.register({}),
+    BillingModule,
   ],
   controllers: [AuthController],
   providers: [

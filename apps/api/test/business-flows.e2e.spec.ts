@@ -358,4 +358,65 @@ describe('business flows (e2e)', () => {
       .set('Authorization', `Bearer ${otherAccessToken}`)
       .expect(404);
   });
+
+  describe('Free plan limits', () => {
+    // A dedicated organization so these limits aren't affected by clients/
+    // jobs/staff created in the tests above.
+    let limitsOwnerAccessToken: string;
+
+    beforeAll(async () => {
+      const res = await request(server())
+        .post('/auth/signup')
+        .send({
+          organizationName: 'Limits Test Co',
+          industryVerticalCode: 'CLEANING',
+          ownerEmail: `limits-${runId}@e2e-test.local`,
+          ownerFirstName: 'Lim',
+          ownerLastName: 'Itz',
+          password: 'Sup3rSecret!23',
+        })
+        .expect(201);
+      limitsOwnerAccessToken = res.body.accessToken;
+    });
+
+    it('blocks creating a client past the Free plan’s maxClients (10)', async () => {
+      for (let i = 0; i < 10; i++) {
+        await request(server())
+          .post('/clients')
+          .set('Authorization', `Bearer ${limitsOwnerAccessToken}`)
+          .send({ name: `Client ${i}`, type: 'RESIDENTIAL' })
+          .expect(201);
+      }
+
+      await request(server())
+        .post('/clients')
+        .set('Authorization', `Bearer ${limitsOwnerAccessToken}`)
+        .send({ name: 'Client 11', type: 'RESIDENTIAL' })
+        .expect(402);
+    });
+
+    it('blocks onboarding Staff past the Free plan’s maxStaff (2)', async () => {
+      for (let i = 0; i < 2; i++) {
+        await request(server())
+          .post('/organizations/me/invitations')
+          .set('Authorization', `Bearer ${limitsOwnerAccessToken}`)
+          .send({ email: `limits-staff-${i}-${runId}@e2e-test.local`, roleCode: 'STAFF' })
+          .expect(204);
+        await request(server())
+          .post(`/invitations/${capturedInvitationToken}/accept`)
+          .send({ firstName: 'S', lastName: `${i}`, password: 'Sup3rSecret!23' })
+          .expect(201);
+      }
+
+      await request(server())
+        .post('/organizations/me/invitations')
+        .set('Authorization', `Bearer ${limitsOwnerAccessToken}`)
+        .send({ email: `limits-staff-2-${runId}@e2e-test.local`, roleCode: 'STAFF' })
+        .expect(204);
+      await request(server())
+        .post(`/invitations/${capturedInvitationToken}/accept`)
+        .send({ firstName: 'S', lastName: '2', password: 'Sup3rSecret!23' })
+        .expect(402);
+    });
+  });
 });

@@ -8,6 +8,7 @@ import {
 import { toDateOrUndefined } from '../../common/to-date';
 import { TenantContextService } from '../../prisma/tenant-context.service';
 import { AuditLogWriterService } from '../audit-logs/audit-log-writer.service';
+import { BillingService } from '../billing/billing.service';
 import type { CreateJobDto } from './dto/create-job.dto';
 import type { UpdateJobDto } from './dto/update-job.dto';
 import type { CreateJobAssignmentDto } from './dto/create-job-assignment.dto';
@@ -27,7 +28,9 @@ export interface JobCaller {
  * their own jobs — Owner/Admin/Dispatcher see everything (see the RBAC
  * matrix in docs/architecture/auth.md). `update`/`remove`/assignment/
  * job-service routes require `jobs.manage`, which Staff and Client never
- * hold, so no equivalent restriction is needed there.
+ * hold, so no equivalent restriction is needed there. `create` is gated
+ * by the active plan's `maxActiveJobs` limit (see
+ * `BillingService.assertActiveJobLimit`).
  */
 @Injectable()
 export class JobsService {
@@ -35,10 +38,12 @@ export class JobsService {
    * Constructs the service around the tenant-scoped Prisma client.
    * @param tenantContext the current request's tenant-scoped Prisma client
    * @param auditLog records changes made through this service
+   * @param billing enforces the active plan's active-job limit
    */
   constructor(
     private readonly tenantContext: TenantContextService,
     private readonly auditLog: AuditLogWriterService,
+    private readonly billing: BillingService,
   ) {}
 
   /**
@@ -61,6 +66,7 @@ export class JobsService {
    * @returns the created record
    */
   async create(organizationId: string, actorUserId: string, dto: CreateJobDto): Promise<Job> {
+    await this.billing.assertMineActiveJobLimit();
     await this.assertClientExists(dto.clientId);
     if (dto.serviceAddressId) {
       await this.assertAddressBelongsToClient(dto.serviceAddressId, dto.clientId);

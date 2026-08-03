@@ -20,6 +20,7 @@ import {
   SESSION_VAR_LOOKUP_TOKEN_HASH,
 } from '../../prisma/run-with-session-var';
 import type { EnvConfig } from '../../config/env.validation';
+import { BillingService } from '../billing/billing.service';
 import { EmailService } from './email/email.service';
 import { generateRawToken, hashToken } from './token.util';
 import { slugifyOrganizationName } from './slug.util';
@@ -60,6 +61,7 @@ export class AuthService {
    * @param jwt used to sign/verify access tokens and the short-lived organization-selection token
    * @param config used to read JWT/refresh-token configuration
    * @param email the (currently stubbed) transactional email port
+   * @param billing enforces the target organization's staff-seat limit when accepting a Staff invitation
    */
   constructor(
     private readonly prisma: PrismaService,
@@ -67,6 +69,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService<EnvConfig, true>,
     private readonly email: EmailService,
+    private readonly billing: BillingService,
   ) {}
 
   /**
@@ -584,8 +587,11 @@ export class AuthService {
       // see the "creation happens via the invitation flow" note in
       // staff.service.ts. Owner/Admin/Dispatcher/Client memberships don't
       // get one: StaffProfile only holds field-employee HR data
-      // (employeeCode, hourlyRate, hireDate).
+      // (employeeCode, hourlyRate, hireDate). Gated by the plan's staff
+      // limit — checked here (seat actually consumed), not at invitation
+      // creation (still just a pending offer).
       if (invitation.role.code === RoleCode.STAFF) {
+        await this.billing.assertStaffLimit(tx);
         await tx.staffProfile.create({
           data: { organizationId: invitation.organizationId, membershipId: membership.id },
         });
