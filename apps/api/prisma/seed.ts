@@ -37,6 +37,7 @@ const ROLE_PERMISSIONS: Record<RoleCode, readonly string[]> = {
   [RoleCode.ADMIN]: PERMISSIONS.map((p) => p.code).filter((c) => c !== 'organizations.manage'),
   [RoleCode.DISPATCHER]: [
     'clients.manage',
+    'clients.read',
     'services.read',
     'jobs.manage',
     'jobs.read',
