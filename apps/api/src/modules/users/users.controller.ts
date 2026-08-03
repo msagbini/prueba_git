@@ -1,9 +1,11 @@
 import { Body, Controller, Delete, Get, Param, Patch } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../common/types/authenticated-request';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 
-/** Users visible within the caller's active organization. See `users.service.ts` for the Fase 2 stub scope note. */
+/** Users visible within the caller's active organization. */
 @ApiTags('users')
 @ApiBearerAuth()
 @Controller('users')
@@ -34,23 +36,29 @@ export class UsersController {
   }
 
   /**
-   * Updates a record.
+   * Updates a record. The caller themselves, or an Owner/Admin.
+   * @param user the authenticated caller
    * @param id the user to update
    * @param dto the fields to change
    * @returns the updated record
    */
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
-    return this.usersService.update(id, dto);
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateUserDto,
+  ) {
+    return this.usersService.update(user.org, { userId: user.sub, role: user.role }, id, dto);
   }
 
   /**
-   * Removes a record.
+   * Removes a record. The caller themselves, or an Owner/Admin.
+   * @param user the authenticated caller
    * @param id the user to remove from the caller's active organization
    * @returns the removal result
    */
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.usersService.remove(id);
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.usersService.remove(user.org, { userId: user.sub, role: user.role }, id);
   }
 }
