@@ -1,61 +1,265 @@
-import { Injectable, NotImplementedException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, RoleCode, type Invoice, type InvoiceLineItem } from '@prisma/client';
+import { toDateOrUndefined } from '../../common/to-date';
 import { TenantContextService } from '../../prisma/tenant-context.service';
+import { AuditLogWriterService } from '../audit-logs/audit-log-writer.service';
 import type { CreateInvoiceDto } from './dto/create-invoice.dto';
 import type { UpdateInvoiceDto } from './dto/update-invoice.dto';
 import type { CreateInvoiceLineItemDto } from './dto/create-invoice-line-item.dto';
 
+/** Identifies the caller for row-level invoice visibility — a Client only ever sees their own. */
+export interface InvoiceCaller {
+  membershipId: string;
+  role: string;
+}
+
+const MAX_INVOICE_NUMBER_ATTEMPTS = 5;
+
 /**
- * Invoices and their line items. `subtotal`/`taxAmount`/`total` are
- * derived from line items, not set directly by callers — computing them
- * is Fase 3 business logic, not part of this contract. Fase 2 scope
- * note: see `organizations.service.ts` for the pattern this follows.
+ * Invoices and their line items. `subtotal`/`total` are derived from line
+ * items (recomputed on every `createLineItem` call) rather than settable
+ * directly — `taxAmount` has no rate/rule to compute it from anywhere in
+ * this schema, so it stays `0` for every invoice in this phase; a real
+ * tax calculation is out of scope until the product defines where a tax
+ * rate would even come from (per-organization? per-jurisdiction?).
  */
 @Injectable()
 export class InvoicesService {
   /**
    * Constructs the service around the tenant-scoped Prisma client.
    * @param tenantContext the current request's tenant-scoped Prisma client
+   * @param auditLog records changes made through this service
    */
-  constructor(private readonly tenantContext: TenantContextService) {}
+  constructor(
+    private readonly tenantContext: TenantContextService,
+    private readonly auditLog: AuditLogWriterService,
+  ) {}
 
   /**
-   * Lists records. Stubbed for Fase 3 — see the class-level scope note.
+   * Lists records.
+   * @param caller the authenticated caller, for row-level visibility
+   * @returns invoices visible to the caller
    */
-  list(): never {
-    throw new NotImplementedException('Implemented in Fase 3.');
+  async list(caller: InvoiceCaller): Promise<Invoice[]> {
+    return this.tenantContext.client.invoice.findMany({
+      where: await this.visibilityFilter(caller),
+      orderBy: { issueDate: 'desc' },
+    });
   }
 
   /**
-   * Creates a record. Stubbed for Fase 3 — see the class-level scope note.
-   * @param _dto the invoice to create
+   * Creates a record.
+   * @param organizationId the caller's active organization
+   * @param actorUserId the caller, for the audit trail
+   * @param dto the invoice to create
+   * @returns the created record
    */
-  create(_dto: CreateInvoiceDto): never {
-    throw new NotImplementedException('Implemented in Fase 3.');
+  async create(
+    organizationId: string,
+    actorUserId: string,
+    dto: CreateInvoiceDto,
+  ): Promise<Invoice> {
+    const invoice = await this.createWithGeneratedNumber(organizationId, dto);
+
+    await this.auditLog.record({
+      organizationId,
+      actorUserId,
+      action: 'invoice.created',
+      entityType: 'Invoice',
+      entityId: invoice.id,
+      after: invoice,
+    });
+
+    return invoice;
   }
 
   /**
-   * Fetches a single record. Stubbed for Fase 3 — see the class-level scope note.
-   * @param _id the invoice to fetch
+   * Fetches a single record.
+   * @param caller the authenticated caller, for row-level visibility
+   * @param id the invoice to fetch
+   * @returns the matching record
    */
-  findOne(_id: string): never {
-    throw new NotImplementedException('Implemented in Fase 3.');
+  async findOne(caller: InvoiceCaller, id: string): Promise<Invoice> {
+    return this.findOrThrow(caller, id);
   }
 
   /**
-   * Updates a record. Stubbed for Fase 3 — see the class-level scope note.
-   * @param _id the invoice to update
-   * @param _dto the fields to change
+   * Updates a record.
+   * @param organizationId the caller's active organization
+   * @param actorUserId the caller, for the audit trail
+   * @param caller the authenticated caller, for row-level visibility
+   * @param id the invoice to update
+   * @param dto the fields to change
+   * @returns the updated record
    */
-  update(_id: string, _dto: UpdateInvoiceDto): never {
-    throw new NotImplementedException('Implemented in Fase 3.');
+  async update(
+    organizationId: string,
+    actorUserId: string,
+    caller: InvoiceCaller,
+    id: string,
+    dto: UpdateInvoiceDto,
+  ): Promise<Invoice> {
+    const before = await this.findOrThrow(caller, id);
+
+    const after = await this.tenantContext.client.invoice.update({
+      where: { id },
+      data: { status: dto.status, dueDate: toDateOrUndefined(dto.dueDate) },
+    });
+
+    await this.auditLog.record({
+      organizationId,
+      actorUserId,
+      action: 'invoice.updated',
+      entityType: 'Invoice',
+      entityId: id,
+      before,
+      after,
+    });
+
+    return after;
   }
 
   /**
-   * Creates a line item. Stubbed for Fase 3 — see the class-level scope note.
-   * @param _invoiceId the invoice to add a line item to
-   * @param _dto the line item to create
+   * Adds a line item to an invoice, then recomputes the invoice's
+   * subtotal/total from every line item (see the class-level scope note).
+   * @param organizationId the caller's active organization
+   * @param actorUserId the caller, for the audit trail
+   * @param caller the authenticated caller, for row-level visibility
+   * @param invoiceId the invoice to add a line item to
+   * @param dto the line item to create
+   * @returns the created line item
    */
-  createLineItem(_invoiceId: string, _dto: CreateInvoiceLineItemDto): never {
-    throw new NotImplementedException('Implemented in Fase 3.');
+  async createLineItem(
+    organizationId: string,
+    actorUserId: string,
+    caller: InvoiceCaller,
+    invoiceId: string,
+    dto: CreateInvoiceLineItemDto,
+  ): Promise<InvoiceLineItem> {
+    await this.findOrThrow(caller, invoiceId);
+
+    const lineTotal = dto.quantity * dto.unitPrice;
+    const lineItem = await this.tenantContext.client.invoiceLineItem.create({
+      data: {
+        organizationId,
+        invoiceId,
+        jobId: dto.jobId,
+        serviceId: dto.serviceId,
+        description: dto.description,
+        quantity: dto.quantity,
+        unitPrice: dto.unitPrice,
+        lineTotal,
+      },
+    });
+
+    await this.recomputeTotals(invoiceId);
+
+    await this.auditLog.record({
+      organizationId,
+      actorUserId,
+      action: 'invoice_line_item.created',
+      entityType: 'InvoiceLineItem',
+      entityId: lineItem.id,
+      after: lineItem,
+    });
+
+    return lineItem;
+  }
+
+  /**
+   * Recomputes `subtotal`/`total` from an invoice's current line items.
+   * @param invoiceId the invoice to recompute
+   */
+  private async recomputeTotals(invoiceId: string): Promise<void> {
+    const lineItems = await this.tenantContext.client.invoiceLineItem.findMany({
+      where: { invoiceId },
+    });
+    const subtotal = lineItems.reduce(
+      (sum, item) => sum.plus(item.lineTotal),
+      new Prisma.Decimal(0),
+    );
+
+    const invoice = await this.tenantContext.client.invoice.findFirst({ where: { id: invoiceId } });
+    const taxAmount = invoice?.taxAmount ?? new Prisma.Decimal(0);
+
+    await this.tenantContext.client.invoice.update({
+      where: { id: invoiceId },
+      data: { subtotal, total: subtotal.plus(taxAmount) },
+    });
+  }
+
+  /**
+   * Creates an invoice with a generated, organization-unique invoice
+   * number, retrying on the rare chance two concurrent creates in the
+   * same organization compute the same number.
+   * @param organizationId the caller's active organization
+   * @param dto the invoice to create
+   * @returns the created record
+   */
+  private async createWithGeneratedNumber(
+    organizationId: string,
+    dto: CreateInvoiceDto,
+  ): Promise<Invoice> {
+    for (let attempt = 0; attempt < MAX_INVOICE_NUMBER_ATTEMPTS; attempt++) {
+      const existingCount = await this.tenantContext.client.invoice.count();
+      const invoiceNumber = `INV-${String(existingCount + 1 + attempt).padStart(4, '0')}`;
+      try {
+        return await this.tenantContext.client.invoice.create({
+          data: {
+            organizationId,
+            clientId: dto.clientId,
+            invoiceNumber,
+            issueDate: new Date(dto.issueDate),
+            dueDate: new Date(dto.dueDate),
+            subtotal: 0,
+            taxAmount: 0,
+            total: 0,
+          },
+        });
+      } catch (error) {
+        const isUniqueConflict =
+          error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+        if (!isUniqueConflict || attempt === MAX_INVOICE_NUMBER_ATTEMPTS - 1) {
+          throw error;
+        }
+      }
+    }
+    /* istanbul ignore next -- unreachable: the loop above always returns or throws */
+    throw new Error('Unreachable.');
+  }
+
+  /**
+   * Fetches a caller-visible invoice or throws if it can't be found.
+   * @param caller the authenticated caller, for row-level visibility
+   * @param id the invoice to fetch
+   * @returns the matching record
+   * @throws NotFoundException if no such invoice is visible to the caller
+   */
+  private async findOrThrow(caller: InvoiceCaller, id: string): Promise<Invoice> {
+    const invoice = await this.tenantContext.client.invoice.findFirst({
+      where: { id, ...(await this.visibilityFilter(caller)) },
+    });
+    if (!invoice) {
+      throw new NotFoundException('Invoice not found.');
+    }
+    return invoice;
+  }
+
+  /**
+   * Builds the extra `where` clause restricting a Client caller to their
+   * own invoices — see the class-level scope note. Owner/Admin/Dispatcher
+   * get an empty filter (no restriction); Staff never holds
+   * `invoices.read` so never reaches this.
+   * @param caller the authenticated caller
+   * @returns a Prisma `where` fragment to merge into an invoice query
+   */
+  private async visibilityFilter(caller: InvoiceCaller): Promise<Record<string, unknown>> {
+    if (caller.role !== RoleCode.CLIENT) {
+      return {};
+    }
+    const membership = await this.tenantContext.client.organizationMembership.findFirst({
+      where: { id: caller.membershipId },
+    });
+    return { clientId: membership?.clientId ?? '00000000-0000-0000-0000-000000000000' };
   }
 }

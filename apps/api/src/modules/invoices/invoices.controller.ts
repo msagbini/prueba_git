@@ -1,13 +1,18 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import type { AuthenticatedUser } from '../../common/types/authenticated-request';
 import { InvoicesService } from './invoices.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceDto } from './dto/update-invoice.dto';
 import { CreateInvoiceLineItemDto } from './dto/create-invoice-line-item.dto';
 
-/** Invoices and their line items. See `invoices.service.ts` for the Fase 2 stub scope note. */
+/** Invoices and their line items. */
 @ApiTags('invoices')
 @ApiBearerAuth()
+@UseGuards(PermissionsGuard)
 @Controller('invoices')
 export class InvoicesController {
   /**
@@ -18,52 +23,82 @@ export class InvoicesController {
 
   /**
    * Lists records.
+   * @param user the authenticated caller
    * @returns invoices visible to the caller.
    */
+  @RequirePermissions('invoices.read')
   @Get()
-  list() {
-    return this.invoicesService.list();
+  list(@CurrentUser() user: AuthenticatedUser) {
+    return this.invoicesService.list({ membershipId: user.membershipId, role: user.role });
   }
 
   /**
    * Creates a record.
+   * @param user the authenticated caller
    * @param dto the invoice to create
    * @returns the created record
    */
+  @RequirePermissions('invoices.manage')
   @Post()
-  create(@Body() dto: CreateInvoiceDto) {
-    return this.invoicesService.create(dto);
+  create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateInvoiceDto) {
+    return this.invoicesService.create(user.org, user.sub, dto);
   }
 
   /**
    * Fetches a single record.
+   * @param user the authenticated caller
    * @param id the invoice to fetch
    * @returns the matching record
    */
+  @RequirePermissions('invoices.read')
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.invoicesService.findOne(id);
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.invoicesService.findOne({ membershipId: user.membershipId, role: user.role }, id);
   }
 
   /**
    * Updates a record.
+   * @param user the authenticated caller
    * @param id the invoice to update
    * @param dto the fields to change
    * @returns the updated record
    */
+  @RequirePermissions('invoices.manage')
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateInvoiceDto) {
-    return this.invoicesService.update(id, dto);
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateInvoiceDto,
+  ) {
+    return this.invoicesService.update(
+      user.org,
+      user.sub,
+      { membershipId: user.membershipId, role: user.role },
+      id,
+      dto,
+    );
   }
 
   /**
    * Adds a line item to an invoice.
+   * @param user the authenticated caller
    * @param id the invoice to add a line item to
    * @param dto the line item to create
    * @returns the created line item
    */
+  @RequirePermissions('invoices.manage')
   @Post(':id/line-items')
-  createLineItem(@Param('id') id: string, @Body() dto: CreateInvoiceLineItemDto) {
-    return this.invoicesService.createLineItem(id, dto);
+  createLineItem(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: CreateInvoiceLineItemDto,
+  ) {
+    return this.invoicesService.createLineItem(
+      user.org,
+      user.sub,
+      { membershipId: user.membershipId, role: user.role },
+      id,
+      dto,
+    );
   }
 }
