@@ -4,9 +4,9 @@ import type { Prisma } from '@prisma/client';
  * Every Prisma model (by its PascalCase model name, as seen by Client
  * Extensions) that carries an `organizationId` column and must be
  * auto-scoped by {@link tenantScopingExtension}. Deliberately excludes:
- * - The 7 global identity/reference tables (User, Role, Permission,
+ * - The 8 global identity/reference tables (User, Role, Permission,
  *   RolePermission, IndustryVertical, PasswordResetToken,
- *   EmailVerificationToken) — see schema.prisma's header comment.
+ *   EmailVerificationToken, Plan) — see schema.prisma's header comment.
  * - `Organization` itself, whose tenant boundary is its own `id`, not an
  *   `organizationId` column — callers filter explicitly by id, and RLS
  *   (policied on id) is the enforcement layer for that table.
@@ -27,6 +27,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<Prisma.ModelName> = new Set<Prism
   'InvoiceLineItem',
   'Payment',
   'AuditLog',
+  'Subscription',
 ]);
 
 /**

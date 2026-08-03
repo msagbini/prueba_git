@@ -1,10 +1,11 @@
 /**
  * Seeds reference data that must exist before any organization can sign
- * up: the fixed system roles, their permissions, and the supported
- * industry verticals. Run via `pnpm prisma:seed`. Idempotent — safe to
- * re-run (uses upsert throughout).
+ * up: the fixed system roles, their permissions, the supported industry
+ * verticals, and the subscription plans DOS itself sells. Run via
+ * `pnpm prisma:seed`. Idempotent — safe to re-run (uses upsert
+ * throughout).
  */
-import { PrismaClient, RoleCode, IndustryVerticalCode } from '@prisma/client';
+import { PrismaClient, RoleCode, IndustryVerticalCode, PlanCode } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -107,6 +108,51 @@ const INDUSTRY_VERTICALS: { code: IndustryVerticalCode; name: string; descriptio
   },
 ];
 
+/**
+ * The tiers DOS itself sells to organizations (Fase 4) — not the
+ * cleaning business's own service catalog. `null` limits mean
+ * unlimited. `stripePriceId` is left unset here; wiring a real Stripe
+ * catalog is a deploy-time configuration step, not something seeded
+ * with fake ids (see docs/technical-log/phase-4.md).
+ */
+const PLANS: {
+  code: PlanCode;
+  name: string;
+  description: string;
+  priceMonthlyCents: number;
+  maxClients: number | null;
+  maxActiveJobs: number | null;
+  maxStaff: number | null;
+}[] = [
+  {
+    code: PlanCode.FREE,
+    name: 'Free',
+    description: 'Get started at no cost — enough to run a small operation.',
+    priceMonthlyCents: 0,
+    maxClients: 10,
+    maxActiveJobs: 20,
+    maxStaff: 2,
+  },
+  {
+    code: PlanCode.PRO,
+    name: 'Pro',
+    description: 'For growing teams juggling more clients and staff.',
+    priceMonthlyCents: 4900,
+    maxClients: 100,
+    maxActiveJobs: 500,
+    maxStaff: 10,
+  },
+  {
+    code: PlanCode.BUSINESS,
+    name: 'Business',
+    description: 'No limits — for established operations at scale.',
+    priceMonthlyCents: 14900,
+    maxClients: null,
+    maxActiveJobs: null,
+    maxStaff: null,
+  },
+];
+
 /** Upserts permissions, roles, role-permission grants, and industry verticals. */
 async function main(): Promise<void> {
   for (const permission of PERMISSIONS) {
@@ -143,7 +189,22 @@ async function main(): Promise<void> {
     });
   }
 
-  console.log('Seed complete: roles, permissions, role_permissions, industry_verticals.');
+  for (const plan of PLANS) {
+    await prisma.plan.upsert({
+      where: { code: plan.code },
+      update: {
+        name: plan.name,
+        description: plan.description,
+        priceMonthlyCents: plan.priceMonthlyCents,
+        maxClients: plan.maxClients,
+        maxActiveJobs: plan.maxActiveJobs,
+        maxStaff: plan.maxStaff,
+      },
+      create: plan,
+    });
+  }
+
+  console.log('Seed complete: roles, permissions, role_permissions, industry_verticals, plans.');
 }
 
 main()

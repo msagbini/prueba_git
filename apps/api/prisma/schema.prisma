@@ -100,6 +100,7 @@ model Organization {
   jobServices       JobService[]
   jobAssignments    JobAssignment[]
   invoiceLineItems  InvoiceLineItem[]
+  subscription      Subscription?
 
   @@map("organizations")
 }
@@ -696,4 +697,76 @@ model AuditLog {
 
   @@index([organizationId])
   @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Monetización — DOS's own billing to organizations (Fase 4). Distinct from
+// Invoice/Payment above, which are the cleaning business's billing to its
+// own customers.
+// ---------------------------------------------------------------------------
+
+enum PlanCode {
+  FREE
+  PRO
+  BUSINESS
+
+  @@map("plan_code")
+}
+
+/// A subscribable tier DOS sells to organizations. Global reference data
+/// (no organizationId), like IndustryVertical — every organization picks
+/// one, not owns one. `maxClients`/`maxActiveJobs`/`maxStaff` are `null`
+/// for "unlimited" (the Business tier); a concrete number is a hard cap
+/// enforced at creation time in the relevant module (see
+/// docs/technical-log/phase-4.md for which checks exist).
+model Plan {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code              PlanCode @unique
+  name              String
+  description       String?
+  priceMonthlyCents Int      @map("price_monthly_cents")
+  maxClients        Int?     @map("max_clients")
+  maxActiveJobs     Int?     @map("max_active_jobs")
+  maxStaff          Int?     @map("max_staff")
+  /// Stripe Price id for this plan's monthly subscription. Null until a
+  /// real Stripe account/catalog exists to fill it — see
+  /// docs/technical-log/phase-4.md for what checkout does when it's unset.
+  stripePriceId     String?  @map("stripe_price_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+
+  @@map("subscription_status")
+}
+
+/// DOS's own billing relationship with an Organization — exactly one per
+/// org, created on signup at the Free plan. `stripeCustomerId`/
+/// `stripeSubscriptionId` are set once the org completes Stripe Checkout;
+/// both stay null for an organization that never upgraded.
+model Subscription {
+  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String             @unique @map("organization_id") @db.Uuid
+  planId               String             @map("plan_id") @db.Uuid
+  status               SubscriptionStatus @default(ACTIVE)
+  stripeCustomerId     String?            @unique @map("stripe_customer_id")
+  stripeSubscriptionId String?            @unique @map("stripe_subscription_id")
+  currentPeriodEnd     DateTime?          @map("current_period_end")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  plan         Plan         @relation(fields: [planId], references: [id])
+
+  @@index([organizationId])
+  @@map("subscriptions")
 }

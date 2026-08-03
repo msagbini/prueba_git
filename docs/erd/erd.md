@@ -1,15 +1,16 @@
 # Entity-relationship diagram
 
 Generated from `apps/api/prisma/schema.prisma`, current through the
-`invitation_client_link` migration (see `docs/technical-log/phase-2.md`
-and `phase-3.md`). Every table/column here should trace back
-to a documented requirement — see `docs/architecture/overview.md` for the
-product modules this maps to, and `docs/architecture/multi-tenancy.md` for
-what `organizationId` presence/absence on each table means.
+`monetization_plans_subscriptions` migration (see
+`docs/technical-log/phase-2.md`, `phase-3.md` and `phase-4.md`). Every
+table/column here should trace back to a documented requirement — see
+`docs/architecture/overview.md` for the product modules this maps to, and
+`docs/architecture/multi-tenancy.md` for what `organizationId`
+presence/absence on each table means.
 
 **Global tables** (no `organizationId` — intentional exceptions, not
 oversights): `User`, `Role`, `Permission`, `RolePermission`,
-`IndustryVertical`, `PasswordResetToken`, `EmailVerificationToken`.
+`IndustryVertical`, `PasswordResetToken`, `EmailVerificationToken`, `Plan`.
 Every other table is tenant-scoped and carries `organizationId` directly.
 
 ```mermaid
@@ -30,6 +31,7 @@ erDiagram
     Organization ||--o{ InvoiceLineItem : "has"
     Organization ||--o{ Payment : "has"
     Organization ||--o{ AuditLog : "has (nullable)"
+    Organization |o--o| Subscription : "has (1:1)"
 
     User ||--o{ OrganizationMembership : "holds"
     User ||--o{ RefreshToken : "owns"
@@ -68,6 +70,8 @@ erDiagram
     Invoice ||--o{ Payment : "settled by"
 
     RefreshToken |o--o| RefreshToken : "replaced by (optional)"
+
+    Plan ||--o{ Subscription : "tier for"
 
     IndustryVertical {
         uuid id PK
@@ -336,6 +340,32 @@ erDiagram
         string ipAddress
         string userAgent
         datetime createdAt
+    }
+
+    Plan {
+        uuid id PK
+        enum code UK
+        string name
+        string description
+        int priceMonthlyCents
+        int maxClients "nullable, null = unlimited"
+        int maxActiveJobs "nullable, null = unlimited"
+        int maxStaff "nullable, null = unlimited"
+        string stripePriceId "nullable, unset until a real Stripe catalog exists"
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    Subscription {
+        uuid id PK
+        uuid organizationId FK UK
+        uuid planId FK
+        enum status
+        string stripeCustomerId UK "nullable"
+        string stripeSubscriptionId UK "nullable"
+        datetime currentPeriodEnd "nullable"
+        datetime createdAt
+        datetime updatedAt
     }
 ```
 

@@ -10,7 +10,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
-import { RoleCode, type Prisma, type RefreshToken } from '@prisma/client';
+import { RoleCode, PlanCode, type Prisma, type RefreshToken } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantContextService } from '../../prisma/tenant-context.service';
 import { runInTenantTransaction } from '../../prisma/run-in-tenant-transaction';
@@ -81,11 +81,12 @@ export class AuthService {
       throw new ConflictException('An account with this email already exists.');
     }
 
-    const [industryVertical, ownerRole] = await Promise.all([
+    const [industryVertical, ownerRole, freePlan] = await Promise.all([
       this.prisma.industryVertical.findUniqueOrThrow({
         where: { code: dto.industryVerticalCode },
       }),
       this.prisma.role.findUniqueOrThrow({ where: { code: RoleCode.OWNER } }),
+      this.prisma.plan.findUniqueOrThrow({ where: { code: PlanCode.FREE } }),
     ]);
     const passwordHash = await argon2.hash(dto.password, { type: argon2.argon2id });
     const organizationId = randomUUID();
@@ -116,6 +117,13 @@ export class AuthService {
 
         const membership = await tx.organizationMembership.create({
           data: { organizationId, userId: user.id, roleId: ownerRole.id },
+        });
+
+        // Every organization starts on the Free plan — see
+        // docs/technical-log/phase-4.md. Upgrading happens through
+        // POST /organizations/me/subscription/checkout.
+        await tx.subscription.create({
+          data: { organizationId, planId: freePlan.id },
         });
 
         const rawToken = generateRawToken();
