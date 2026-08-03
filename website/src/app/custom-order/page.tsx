@@ -3,8 +3,11 @@
 import { useState } from "react";
 import { categories, getCategory } from "@/lib/products";
 import { shapes, type ShapeId } from "@/lib/shapes";
+import { getColor } from "@/lib/colors";
 import LivePreview from "@/components/LivePreview";
 import ShapePicker from "@/components/ShapePicker";
+import ColorPicker from "@/components/ColorPicker";
+import LeadTimeNote from "@/components/LeadTimeNote";
 
 type Status = "idle" | "submitting" | "success" | "error";
 
@@ -16,6 +19,8 @@ export default function CustomOrderPage() {
   const [categorySlug, setCategorySlug] = useState(categories[0].slug);
   const [shape, setShape] = useState<ShapeId>("circle");
   const [character, setCharacter] = useState("1");
+  const [colorId, setColorId] = useState("");
+  const [eventDate, setEventDate] = useState("");
   const [message, setMessage] = useState("");
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
 
@@ -53,6 +58,8 @@ export default function CustomOrderPage() {
       setMessage("");
       setShape("circle");
       setCharacter("1");
+      setColorId("");
+      setEventDate("");
     } catch (err) {
       setStatus("error");
       setErrorMessage(
@@ -89,6 +96,7 @@ export default function CustomOrderPage() {
               character={character}
               imageDataUrl={imageDataUrl}
               message={message}
+              color={colorId ? getColor(colorId)?.hex : undefined}
             />
           </div>
 
@@ -151,6 +159,24 @@ export default function CustomOrderPage() {
               <input type="hidden" name="character" value={character} />
             )}
 
+            <ColorPicker colorId={colorId} onChange={setColorId} />
+            <input type="hidden" name="color" value={colorId} />
+
+            <div>
+              <label className="text-sm font-semibold text-berry-dark">
+                When do you need it?
+              </label>
+              <input
+                type="date"
+                name="eventDate"
+                value={eventDate}
+                min={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => setEventDate(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
+              />
+              <LeadTimeNote date={eventDate} />
+            </div>
+
             <div>
               <label className="text-sm font-semibold text-berry-dark">
                 Upload an image (optional)
@@ -173,7 +199,7 @@ export default function CustomOrderPage() {
                 rows={4}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder="Event date, theme, colours, sizes, quantity..."
+                placeholder="Theme, sizes, quantity, any other details..."
                 className="mt-1 w-full rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
               />
             </div>

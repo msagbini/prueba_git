@@ -2,12 +2,14 @@ import Link from "next/link";
 import { categories, products } from "@/lib/products";
 import ProductCard from "@/components/ProductCard";
 import StarRating from "@/components/StarRating";
+import TrustBar from "@/components/TrustBar";
 
 const featured = products.filter((p) => p.rating >= 4.9).slice(0, 4);
 
 export default function Home() {
   return (
     <div>
+      <TrustBar />
       <section className="bg-gradient-to-b from-blush to-cream">
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-8 px-4 py-16 text-center sm:px-6 md:py-24">
           <span className="rounded-full bg-white/70 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-berry-dark">

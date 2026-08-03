@@ -3,7 +3,9 @@ import type { Metadata } from "next";
 import { categories } from "@/lib/products";
 
 export const metadata: Metadata = {
-  title: "Shop | Made with Grace",
+  title: "Shop",
+  description:
+    "Browse edible images, cookie cutters, custom chocolates and cake toppers - all made to order.",
 };
 
 export default function ShopPage() {

@@ -14,6 +14,8 @@ export async function POST(request: Request) {
   const image = formData.get("image");
   const shape = formData.get("shape");
   const character = formData.get("character");
+  const color = formData.get("color");
+  const eventDate = formData.get("eventDate");
 
   if (!name || !email || !category) {
     return NextResponse.json(
@@ -31,6 +33,8 @@ export async function POST(request: Request) {
       message,
       shape,
       character,
+      color,
+      eventDate,
       hasImage: image instanceof File && image.size > 0,
     },
   });

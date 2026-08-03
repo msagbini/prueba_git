@@ -6,9 +6,12 @@ import Link from "next/link";
 import { useCart } from "@/lib/cart-context";
 import type { Product } from "@/lib/products";
 import type { ShapeId } from "@/lib/shapes";
+import { getColor } from "@/lib/colors";
 import LivePreview from "@/components/LivePreview";
 import StarRating from "@/components/StarRating";
 import ShapePicker from "@/components/ShapePicker";
+import ColorPicker from "@/components/ColorPicker";
+import CrossSell from "@/components/CrossSell";
 
 export default function ProductCustomizer({ product }: { product: Product }) {
   const { addItem } = useCart();
@@ -16,6 +19,7 @@ export default function ProductCustomizer({ product }: { product: Product }) {
   const [size, setSize] = useState(product.sizes?.[0] ?? "");
   const [shape, setShape] = useState<ShapeId>(product.shapeOptions?.[0] ?? "circle");
   const [character, setCharacter] = useState("1");
+  const [colorId, setColorId] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [note, setNote] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
@@ -42,9 +46,11 @@ export default function ProductCustomizer({ product }: { product: Product }) {
         ? `${shape} "${character}"`
         : shape
       : null;
+    const colorLabel = colorId ? getColor(colorId)?.label : null;
     const details = [
       note,
       shapeLabel ? `[shape: ${shapeLabel}]` : "",
+      colorLabel ? `[colour: ${colorLabel}]` : "",
       fileName ? `[image: ${fileName}]` : "",
     ]
       .filter(Boolean)
@@ -72,6 +78,7 @@ export default function ProductCustomizer({ product }: { product: Product }) {
           character={character}
           imageDataUrl={imageDataUrl}
           message={note}
+          color={colorId ? getColor(colorId)?.hex : undefined}
         />
       </div>
 
@@ -119,6 +126,7 @@ export default function ProductCustomizer({ product }: { product: Product }) {
 
           {product.customizable && (
             <>
+              <ColorPicker colorId={colorId} onChange={setColorId} />
               <div>
                 <label className="text-sm font-semibold text-berry-dark">
                   Upload your image (optional)
@@ -189,6 +197,8 @@ export default function ProductCustomizer({ product }: { product: Product }) {
           </Link>{" "}
           instead.
         </p>
+
+        <CrossSell currentCategory={product.category} />
       </div>
     </div>
   );

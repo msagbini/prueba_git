@@ -12,6 +12,7 @@ export default function Header() {
   const navLinks = [
     ...categories.map((c) => ({ href: `/shop/${c.slug}`, label: c.name })),
     { href: "/custom-order", label: "Custom Order" },
+    { href: "/faq", label: "FAQ" },
   ];
 
   return (

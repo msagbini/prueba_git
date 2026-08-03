@@ -9,6 +9,15 @@ const MATERIAL: Record<string, { base: string; edge: string; fallback: string }>
   "cake-toppers": { base: "#fffaf0", edge: "#d8a94d", fallback: "🎂" },
 };
 
+function isDarkHex(hex?: string) {
+  if (!hex) return false;
+  const n = parseInt(hex.replace("#", ""), 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return 0.299 * r + 0.587 * g + 0.114 * b < 130;
+}
+
 function shapeGeometry(shape: ShapeId) {
   switch (shape) {
     case "circle":
@@ -39,12 +48,14 @@ function ShapeFrame({
   shape,
   imageDataUrl,
   message,
+  fillColor,
   className = "h-36 w-36",
 }: {
   category: string;
   shape: ShapeId;
   imageDataUrl?: string | null;
   message?: string;
+  fillColor?: string;
   className?: string;
 }) {
   const material = MATERIAL[category] ?? MATERIAL["cookie-cutters"];
@@ -56,7 +67,7 @@ function ShapeFrame({
       style={{
         ...geometry,
         borderColor: material.edge,
-        backgroundColor: material.base,
+        backgroundColor: fillColor ?? material.base,
         backgroundImage: imageDataUrl ? `url(${imageDataUrl})` : undefined,
         backgroundSize: "cover",
         backgroundPosition: "center",
@@ -64,7 +75,9 @@ function ShapeFrame({
     >
       {!imageDataUrl && message && (
         <span
-          className={`font-display text-center font-semibold italic text-berry-dark ${TEXT_SAFE_AREA[shape].classes}`}
+          className={`font-display text-center font-semibold italic ${
+            isDarkHex(fillColor ?? material.base) ? "text-white" : "text-berry-dark"
+          } ${TEXT_SAFE_AREA[shape].classes}`}
         >
           {message.slice(0, TEXT_SAFE_AREA[shape].maxChars)}
         </span>
@@ -80,13 +93,16 @@ function GlyphFrame({
   category,
   character,
   imageDataUrl,
+  fillColor,
 }: {
   category: string;
   character: string;
   imageDataUrl?: string | null;
+  fillColor?: string;
 }) {
   const material = MATERIAL[category] ?? MATERIAL["cookie-cutters"];
   const ch = (character || "1").slice(0, 2).toUpperCase();
+  const solidColor = fillColor ?? material.edge;
 
   return (
     <div
@@ -98,8 +114,8 @@ function GlyphFrame({
         fontFamily: "var(--font-display, serif)",
         WebkitBackgroundClip: "text",
         backgroundClip: "text",
-        WebkitTextFillColor: imageDataUrl ? "transparent" : material.edge,
-        color: imageDataUrl ? "transparent" : material.edge,
+        WebkitTextFillColor: imageDataUrl ? "transparent" : solidColor,
+        color: imageDataUrl ? "transparent" : solidColor,
         backgroundImage: imageDataUrl ? `url(${imageDataUrl})` : undefined,
         backgroundSize: "cover",
         backgroundPosition: "center",
@@ -118,6 +134,7 @@ export default function LivePreview({
   character = "1",
   imageDataUrl,
   message,
+  color,
 }: {
   category: string;
   size?: string;
@@ -125,6 +142,7 @@ export default function LivePreview({
   character?: string;
   imageDataUrl?: string | null;
   message?: string;
+  color?: string;
 }) {
   const hasContent = Boolean(imageDataUrl || message);
 
@@ -146,8 +164,11 @@ export default function LivePreview({
           {Array.from({ length: 8 }).map((_, i) => (
             <div
               key={i}
-              className="h-9 w-9 overflow-hidden rounded-full border-2 border-white bg-white bg-cover bg-center shadow"
-              style={imageDataUrl ? { backgroundImage: `url(${imageDataUrl})` } : undefined}
+              className="h-9 w-9 overflow-hidden rounded-full border-2 border-white bg-cover bg-center shadow"
+              style={{
+                backgroundColor: color ?? "#ffffff",
+                ...(imageDataUrl ? { backgroundImage: `url(${imageDataUrl})` } : {}),
+              }}
             />
           ))}
         </div>
@@ -159,16 +180,24 @@ export default function LivePreview({
       if (boxMatch) {
         const count = Math.min(9, Number(boxMatch[1]));
         if (shape === "number" || shape === "letter") {
-          return <GlyphFrame category={category} character={character} imageDataUrl={imageDataUrl} />;
+          return (
+            <GlyphFrame
+              category={category}
+              character={character}
+              imageDataUrl={imageDataUrl}
+              fillColor={color}
+            />
+          );
         }
         return (
           <div className="grid w-44 grid-cols-3 gap-2 rounded-lg bg-[#3a2318] p-3 shadow-lg">
             {Array.from({ length: count }).map((_, i) => (
               <div
                 key={i}
-                className="aspect-square overflow-hidden border border-[#3a2318] bg-[#5b3a2a] bg-cover bg-center"
+                className="aspect-square overflow-hidden border border-[#3a2318] bg-cover bg-center"
                 style={{
                   ...shapeGeometry(shape),
+                  backgroundColor: color ?? "#5b3a2a",
                   ...(imageDataUrl ? { backgroundImage: `url(${imageDataUrl})` } : {}),
                 }}
               />
@@ -179,7 +208,14 @@ export default function LivePreview({
     }
 
     if (shape === "number" || shape === "letter") {
-      return <GlyphFrameWithStand category={category} character={character} imageDataUrl={imageDataUrl} />;
+      return (
+        <GlyphFrameWithStand
+          category={category}
+          character={character}
+          imageDataUrl={imageDataUrl}
+          fillColor={color}
+        />
+      );
     }
 
     if (category === "custom-chocolates") {
@@ -189,6 +225,7 @@ export default function LivePreview({
           shape={shape}
           imageDataUrl={imageDataUrl}
           message={message}
+          fillColor={color}
           className="h-28 w-44"
         />
       );
@@ -202,6 +239,7 @@ export default function LivePreview({
             shape={shape}
             imageDataUrl={imageDataUrl}
             message={message}
+            fillColor={color}
             className="h-32 w-32"
           />
           <div className="h-10 w-1.5 bg-gold" />
@@ -210,7 +248,13 @@ export default function LivePreview({
     }
 
     return (
-      <ShapeFrame category={category} shape={shape} imageDataUrl={imageDataUrl} message={message} />
+      <ShapeFrame
+        category={category}
+        shape={shape}
+        imageDataUrl={imageDataUrl}
+        message={message}
+        fillColor={color}
+      />
     );
   }
 }
@@ -219,18 +263,20 @@ function GlyphFrameWithStand({
   category,
   character,
   imageDataUrl,
+  fillColor,
 }: {
   category: string;
   character: string;
   imageDataUrl?: string | null;
+  fillColor?: string;
 }) {
   if (category === "cake-toppers") {
     return (
       <div className="flex flex-col items-center">
-        <GlyphFrame category={category} character={character} imageDataUrl={imageDataUrl} />
+        <GlyphFrame category={category} character={character} imageDataUrl={imageDataUrl} fillColor={fillColor} />
         <div className="h-10 w-1.5 bg-gold" />
       </div>
     );
   }
-  return <GlyphFrame category={category} character={character} imageDataUrl={imageDataUrl} />;
+  return <GlyphFrame category={category} character={character} imageDataUrl={imageDataUrl} fillColor={fillColor} />;
 }
