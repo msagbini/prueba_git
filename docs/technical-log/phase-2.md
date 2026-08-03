@@ -319,4 +319,56 @@ statement outside a module`, and after the first fix, the same error one
     `<App />` through the full provider/navigation stack — not mocked out.
     `node scripts/check-readmes.mjs` passes (16/16 modules).
 
-_(Continued as later steps land — CI.)_
+- **CI pipeline** (`.github/workflows/ci.yml`): one job on `ubuntu-latest`
+  — install, start Postgres via the same `infra/docker/docker-compose.yml`
+  used locally (so CI and local dev are provisioned identically, not from
+  a parallel hand-rolled setup), apply migrations, seed, then `turbo run
+lint build test`, then `pnpm docs:check-readmes`.
+  - **Found and fixed a real, previously-undetected bug while wiring this
+    up**: `apps/web`'s production build (`tsc -b`) failed with `'Routes'
+cannot be used as a JSX component` / `Property 'children' is missing in
+type 'ReactElement<...>' but required in type 'ReactPortal'`. This was
+    **not** a regression from anything touched in this step — root cause
+    was the `apps/mobile` scaffold (task 15): `react-router`/
+    `react-router-dom` declare `react` as a real `peerDependency` (so pnpm
+    peer-qualifies it correctly per consumer) but only reference `@types/
+react` via a bare, undeclared `import` inside their own `.d.ts` files.
+    With only one app in the workspace needing React types, pnpm's shared
+    hoisted `@types/react` slot (`node_modules/.pnpm/node_modules/@types/
+react`) was unambiguous; once `apps/mobile` added its own `@types/react`
+    (`^19.2.0`, for RN 0.86/React 19) alongside `apps/web`'s (`^18.3.11`,
+    React 18), that single shared slot could only hold one version — and
+    resolved to the 19.x one, silently handing React 19's `ReactElement`
+    shape to `apps/web`'s `react-router-dom` types and breaking the build.
+    This means **the "0 errors" build claimed for `apps/web` at the end of
+    task 14 was true only at that moment** — it stopped being true the
+    moment task 15 introduced a second React major version into the
+    workspace, and nothing caught it until this step actually exercised
+    `turbo run build` for the whole monorepo together instead of one app
+    at a time.
+    - Ruled out a version-regression explanation first (tried pinning
+      `@types/react` to several older 18.x patches, including all the way
+      back to 18.2.79) — the error persisted identically at every pinned
+      version, which is what pointed at a resolution-path problem instead
+      of a types-content problem.
+    - Fixed at the source, not by pinning: added a `packageExtensions`
+      entry to `pnpm-workspace.yaml` declaring `@types/react` as a
+      (loose, optional) `peerDependency` of `react-router` and
+      `react-router-dom`, matching the real `peerDependency` they already
+      declare for `react` itself. This makes pnpm peer-qualify
+      `@types/react` per consumer the same way it already does for
+      `react` — confirmed by the resulting store path changing to
+      `react-router-dom@6.30.4_@types+react@18.3.31_...` — instead of
+      resolving it from the single shared, contended slot. This is the
+      general fix for any future third app/version added to the
+      workspace, not a one-off patch for this specific pairing.
+  - **Verified**: `pnpm turbo run lint build test` passes for all 3 apps
+    (9/9 tasks) from a from-scratch `pnpm install`, including the live
+    `apps/api` Postgres RLS integration tests, the `apps/mobile` Metro
+    bundle + Jest render, and the now-fixed `apps/web` `tsc -b && vite
+build`; `pnpm docs:check-readmes` passes (16/16). The Postgres-via-Docker
+    step itself could not be exercised inside this container (no Docker
+    daemon available here — verification instead used the same migrate/
+    seed/test commands against this container's native Postgres 16
+    instance, which is how every prior step in this phase was verified
+    too); the workflow YAML mirrors the exact commands confirmed to work.

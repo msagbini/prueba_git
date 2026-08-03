@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # apps/api's integration tests (src/prisma/*.integration.spec.ts) run
+      # against a real Postgres with the project's own RLS setup, not a
+      # mock — see docs/technical-log/phase-2.md. Reusing
+      # infra/docker/docker-compose.yml here (rather than a hand-rolled CI
+      # service) keeps CI and local dev provisioned from the same source.
+      - name: Start local Postgres
+        run: docker compose -f infra/docker/docker-compose.yml up -d
+
+      - name: Wait for Postgres to be healthy
+        run: |
+          for i in $(seq 1 30); do
+            status="$(docker inspect -f '{{.State.Health.Status}}' dos-postgres 2>/dev/null || true)"
+            if [ "$status" = "healthy" ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Postgres did not become healthy in time"
+          docker compose -f infra/docker/docker-compose.yml logs
+          exit 1
+
+      - name: Configure apps/api environment
+        run: cp apps/api/.env.example apps/api/.env
+
+      - name: Generate Prisma client
+        run: pnpm --filter @dos/api prisma:generate
+
+      - name: Apply database migrations
+        run: pnpm --filter @dos/api prisma:migrate:deploy
+
+      - name: Seed reference data
+        run: pnpm --filter @dos/api prisma:seed
+
+      - name: Lint
+        run: pnpm turbo run lint
+
+      - name: Build
+        run: pnpm turbo run build
+
+      - name: Test
+        run: pnpm turbo run test
+
+      - name: Check required READMEs
+        run: pnpm docs:check-readmes

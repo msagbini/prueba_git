@@ -1,6 +1,27 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+# react-router(-dom) reference "react" types via a bare `import` in their
+# .d.ts, but only declare "react" itself (the runtime) as a peerDependency
+# — not "@types/react". Without this, pnpm has no per-consumer signal for
+# @types/react and falls back to a single shared hoisted copy, which two
+# apps needing different React majors (apps/web on 18.x, apps/mobile on
+# 19.x for React Native 0.86) will fight over non-deterministically. This
+# makes @types/react a declared (loose) peer so pnpm resolves it the same
+# peer-qualified way it already resolves "react" itself, per consumer.
+packageExtensions:
+  react-router@*:
+    peerDependencies:
+      '@types/react': '*'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+  react-router-dom@*:
+    peerDependencies:
+      '@types/react': '*'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
 allowBuilds:
   '@nestjs/core': true
   '@prisma/client': true
