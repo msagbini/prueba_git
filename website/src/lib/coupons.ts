@@ -4,6 +4,7 @@ export type Coupon =
 
 export const FREE_SHIPPING_THRESHOLD = 75;
 export const STANDARD_SHIPPING = 9.95;
+export const EXPRESS_SURCHARGE = 5;
 
 export const coupons: Coupon[] = [
   { code: "WELCOME10", type: "percent", value: 10, description: "10% off your first order" },

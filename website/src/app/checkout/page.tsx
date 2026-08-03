@@ -4,15 +4,23 @@ import { useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/lib/cart-context";
 import { getLeadTimeStatus, RUSH_FEE } from "@/lib/leadTime";
-import { findCoupon, FREE_SHIPPING_THRESHOLD, STANDARD_SHIPPING, type Coupon } from "@/lib/coupons";
+import {
+  findCoupon,
+  FREE_SHIPPING_THRESHOLD,
+  STANDARD_SHIPPING,
+  EXPRESS_SURCHARGE,
+  type Coupon,
+} from "@/lib/coupons";
 import LeadTimeNote from "@/components/LeadTimeNote";
 import TrustBar from "@/components/TrustBar";
 
 type PaymentMethod = "card" | "paypal";
+type ShippingMethod = "standard" | "express";
 
 export default function CheckoutPage() {
   const { items, subtotal, clear } = useCart();
   const [method, setMethod] = useState<PaymentMethod>("card");
+  const [shippingMethod, setShippingMethod] = useState<ShippingMethod>("standard");
   const [placed, setPlaced] = useState(false);
   const [neededBy, setNeededBy] = useState("");
   const [rushAccepted, setRushAccepted] = useState(true);
@@ -26,9 +34,14 @@ export default function CheckoutPage() {
   const discount =
     appliedCoupon?.type === "percent" ? subtotal * (appliedCoupon.value / 100) : 0;
   const discountedSubtotal = subtotal - discount;
-  const freeShipping =
+  const freeStandardShipping =
     discountedSubtotal >= FREE_SHIPPING_THRESHOLD || appliedCoupon?.type === "freeShipping";
-  const shipping = freeShipping ? 0 : STANDARD_SHIPPING;
+  const shipping =
+    shippingMethod === "express"
+      ? (freeStandardShipping ? 0 : STANDARD_SHIPPING) + EXPRESS_SURCHARGE
+      : freeStandardShipping
+        ? 0
+        : STANDARD_SHIPPING;
   const rushFee = needsRush ? RUSH_FEE : 0;
   const total = discountedSubtotal + shipping + rushFee;
   const amountToFreeShipping = FREE_SHIPPING_THRESHOLD - discountedSubtotal;
@@ -130,6 +143,41 @@ export default function CheckoutPage() {
                     className="rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
                   />
                 </div>
+              </div>
+            </div>
+
+            <div>
+              <h2 className="font-semibold text-berry-dark">Shipping Method</h2>
+              <div className="mt-2 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShippingMethod("standard")}
+                  className={`rounded-lg border px-3 py-2 text-left text-sm transition ${
+                    shippingMethod === "standard"
+                      ? "border-berry bg-blush text-berry-dark"
+                      : "border-berry/20 text-foreground/70"
+                  }`}
+                >
+                  <span className="block font-medium">Standard</span>
+                  <span className="text-xs">
+                    3-5 business days ·{" "}
+                    {freeStandardShipping ? "Free" : `$${STANDARD_SHIPPING.toFixed(2)}`}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShippingMethod("express")}
+                  className={`rounded-lg border px-3 py-2 text-left text-sm transition ${
+                    shippingMethod === "express"
+                      ? "border-berry bg-blush text-berry-dark"
+                      : "border-berry/20 text-foreground/70"
+                  }`}
+                >
+                  <span className="block font-medium">Express</span>
+                  <span className="text-xs">
+                    1-2 business days · +${EXPRESS_SURCHARGE.toFixed(2)}
+                  </span>
+                </button>
               </div>
             </div>
 
@@ -261,9 +309,9 @@ export default function CheckoutPage() {
               ))}
             </ul>
 
-            {!freeShipping && amountToFreeShipping > 0 && (
+            {!freeStandardShipping && amountToFreeShipping > 0 && (
               <p className="mt-3 rounded-lg bg-lavender/50 px-3 py-2 text-xs font-medium text-berry-dark">
-                Add ${amountToFreeShipping.toFixed(2)} more to get free shipping 🚚
+                Add ${amountToFreeShipping.toFixed(2)} more to get free standard shipping 🚚
               </p>
             )}
 
@@ -279,8 +327,8 @@ export default function CheckoutPage() {
                 </div>
               )}
               <div className="flex justify-between text-foreground/70">
-                <span>Shipping</span>
-                <span>{freeShipping ? "Free" : `$${shipping.toFixed(2)}`}</span>
+                <span>Shipping ({shippingMethod === "express" ? "Express" : "Standard"})</span>
+                <span>{shipping === 0 ? "Free" : `$${shipping.toFixed(2)}`}</span>
               </div>
               {rushFee > 0 && (
                 <div className="flex justify-between text-foreground/70">

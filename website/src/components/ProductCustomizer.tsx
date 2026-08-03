@@ -12,6 +12,7 @@ import StarRating from "@/components/StarRating";
 import ShapePicker from "@/components/ShapePicker";
 import ColorPicker from "@/components/ColorPicker";
 import CrossSell from "@/components/CrossSell";
+import ShareButtons from "@/components/ShareButtons";
 
 export default function ProductCustomizer({ product }: { product: Product }) {
   const { addItem } = useCart();
@@ -86,8 +87,9 @@ export default function ProductCustomizer({ product }: { product: Product }) {
         <h1 className="font-display text-3xl font-bold text-berry-dark">
           {product.name}
         </h1>
-        <div className="mt-2">
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           <StarRating rating={product.rating} reviewCount={product.reviewCount} />
+          <ShareButtons title={product.name} />
         </div>
         <p className="mt-4 text-lg font-semibold text-berry">
           ${product.price.toFixed(2)}

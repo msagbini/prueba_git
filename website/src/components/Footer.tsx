@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { categories } from "@/lib/products";
 import NewsletterSignup from "@/components/NewsletterSignup";
+import SocialIcons from "@/components/SocialIcons";
 
 export default function Footer() {
   return (
@@ -14,6 +15,9 @@ export default function Footer() {
             Custom edible images, cookie cutters, chocolates & cake toppers,
             handmade in Western Australia and shipped nationwide.
           </p>
+          <div className="mt-4">
+            <SocialIcons />
+          </div>
         </div>
         <div>
           <h5 className="font-semibold text-berry-dark">Shop</h5>

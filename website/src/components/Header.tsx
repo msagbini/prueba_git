@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useCart } from "@/lib/cart-context";
 import { categories } from "@/lib/products";
+import SearchBox from "@/components/SearchBox";
 
 export default function Header() {
   const [open, setOpen] = useState(false);
@@ -34,7 +35,8 @@ export default function Header() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          <SearchBox />
           <Link
             href="/cart"
             className="relative flex items-center gap-1 rounded-full border border-berry/20 px-3 py-1.5 text-sm font-medium text-berry-dark transition hover:bg-blush"
