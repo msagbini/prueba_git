@@ -265,4 +265,58 @@ scripts/check-readmes.mjs` passes from the repo root (15/15 modules), and
     `http://localhost:5173` (confirmed via `curl`, correct `<title>` and
     root mount point).
 
-_(Continued as later steps land — mobile scaffold, CI.)_
+- **apps/mobile scaffold** (`apps/mobile/`): React Native **bare** (not
+  Expo managed, per the confirmed mobile decision) + TypeScript, generated
+  with the official `@react-native-community/cli` template (real native
+  `android/`/`ios/` projects, not hand-authored) and renamed into the
+  workspace as `@dos/mobile`. `App.tsx` wires `SafeAreaProvider` +
+  `NavigationContainer`; `src/navigation/RootNavigator.tsx` defines a
+  single-route native-stack (`@react-navigation/native` +
+  `@react-navigation/native-stack` + `react-native-screens`) rendering the
+  placeholder `src/screens/HomeScreen.tsx` — a navigation scaffold, not
+  finished screens (those are Fase 6, same deferral pattern documented for
+  `apps/web`).
+  - This container has no Android SDK or Xcode, so `pnpm android`/`pnpm ios`
+    could not be run here. Verification instead used the JS-only path: a
+    `build` script (`tsc --noEmit` + `react-native bundle`) that produces a
+    real release JS bundle without a device/emulator, per the note in
+    `apps/mobile/README.md`.
+  - **Found and fixed two real pnpm-monorepo/Metro-and-Jest bugs**, neither
+    hit by `apps/api`/`apps/web` because Vite and Nest's own bundler/ts-node
+    resolve pnpm's symlinked `node_modules` correctly by default —
+    Metro and Jest's default configs don't:
+    1. `react-native bundle` failed with `Unable to resolve module
+@babel/runtime/helpers/interopRequireDefault` — Metro's default resolver
+       doesn't follow pnpm's symlinks or see the monorepo root's hoisted
+       `node_modules`. Fixed in `metro.config.js` by adding `watchFolders:
+[workspaceRoot]`, `resolver.nodeModulesPaths` covering both the app's and
+       the root's `node_modules`, and `resolver.unstable_enableSymlinks:
+true`.
+    2. `jest` failed on every test with `SyntaxError: Cannot use import
+statement outside a module`, and after the first fix, the same error one
+       package deeper (`@react-navigation/native`'s ESM build). Root cause:
+       `@react-native/jest-preset`'s default `transformIgnorePatterns`
+       assumes a flat, npm/yarn-classic `node_modules` — it looks for the
+       package name right after the _first_ `node_modules/` segment, but
+       pnpm resolves real files through a nested
+       `node_modules/.pnpm/<pkg>@<version>/node_modules/<pkg>/` path, so the
+       pattern always finds a false "ignore" match at the `.pnpm/` segment
+       before ever reaching the real package name. Fixed with a rewritten
+       `transformIgnorePatterns` in `apps/mobile/jest.config.js` that checks
+       the pnpm-nested and flat shapes as two separate, unambiguous
+       patterns (documented inline with the reasoning, since the fix is
+       non-obvious from the diff alone) — extended to cover
+       `@react-navigation`, `react-native-screens` and
+       `react-native-safe-area-context`, which ship the same kind of
+       untranspiled ESM.
+  - Also removed the template's Meta-internal `@format` JSDoc pragma
+    (flagged by `eslint-plugin-jsdoc`'s `check-tag-names` as an unknown
+    tag — it's a Prettier-team-only marker, meaningless to this project's
+    tooling) from `index.js` and `__tests__/App.test.tsx`.
+  - **Verified**: `pnpm lint` (0 errors, 0 warnings), `tsc --noEmit` clean,
+    `pnpm build` produces a real `dist/index.android.bundle` (~1.2 MB) via
+    Metro, and `pnpm test` passes a live `react-test-renderer` render of
+    `<App />` through the full provider/navigation stack — not mocked out.
+    `node scripts/check-readmes.mjs` passes (16/16 modules).
+
+_(Continued as later steps land — CI.)_
