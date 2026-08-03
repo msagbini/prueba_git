@@ -1,8 +1,8 @@
 # Entity-relationship diagram
 
-Generated from `apps/api/prisma/schema.prisma` after the
-`identity_and_tenancy` and `business_entities` migrations (see
-`docs/technical-log/phase-2.md`). Every table/column here should trace back
+Generated from `apps/api/prisma/schema.prisma`, current through the
+`invitation_client_link` migration (see `docs/technical-log/phase-2.md`
+and `phase-3.md`). Every table/column here should trace back
 to a documented requirement — see `docs/architecture/overview.md` for the
 product modules this maps to, and `docs/architecture/multi-tenancy.md` for
 what `organizationId` presence/absence on each table means.
@@ -52,6 +52,7 @@ erDiagram
     Client ||--o{ ClientAddress : "has"
     Client ||--o{ Job : "requested"
     Client ||--o{ Invoice : "billed"
+    Client |o--o{ UserInvitation : "proposed as (client role, optional)"
 
     ServiceCategory |o--o{ Service : "groups (optional)"
     Service ||--o{ JobService : "used in"
@@ -145,6 +146,7 @@ erDiagram
         enum status
         datetime expiresAt
         datetime createdAt
+        uuid clientId FK "nullable, client role only"
     }
 
     RefreshToken {

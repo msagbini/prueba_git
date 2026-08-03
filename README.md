@@ -8,14 +8,18 @@ maintenance, landscaping and general field services.
 
 ## Status
 
-**Fase 2 — Base técnica: complete**, awaiting approval to start Fase 3.
-This repository currently contains the foundational architecture (database
-schema, API contract, authentication, RBAC, monorepo structure, web/mobile
-scaffolds, CI) rather than finished product features — the business
-modules (clients, jobs, staff, billing) are stubbed on purpose. See
-[`docs/technical-log/phase-2.md`](docs/technical-log/phase-2.md) for the
-full build log and [`docs/architecture/overview.md`](docs/architecture/overview.md)
-for the system design.
+**Fase 3 — MVP operativo: complete**, awaiting approval to start Fase 4
+(Monetización). The API's business modules (clients, services, staff,
+jobs/scheduling, invoicing, payments) are fully implemented — real CRUD,
+permission-scoped RBAC, row-level visibility (Staff/Client), and an audit
+trail — behind the same multi-tenant architecture built in Fase 2. The
+web and mobile apps are still routing/navigation scaffolds; real screens
+land in Fase 5/6. See
+[`docs/technical-log/phase-3.md`](docs/technical-log/phase-3.md) (and
+[`phase-2.md`](docs/technical-log/phase-2.md) for the foundational build)
+for the full log, and
+[`docs/architecture/overview.md`](docs/architecture/overview.md) for the
+system design.
 
 ## Repository layout
 

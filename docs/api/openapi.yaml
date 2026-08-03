@@ -224,6 +224,17 @@ paths:
         - organizations
       security:
         - bearer: []
+  /audit-logs:
+    get:
+      operationId: AuditLogsController_list
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - audit-logs
+      security:
+        - bearer: []
   /organizations/me/members:
     get:
       operationId: MembershipsController_list
@@ -879,17 +890,6 @@ paths:
         - payments
       security:
         - bearer: []
-  /audit-logs:
-    get:
-      operationId: AuditLogsController_list
-      parameters: []
-      responses:
-        '200':
-          description: ''
-      tags:
-        - audit-logs
-      security:
-        - bearer: []
   /health:
     get:
       operationId: HealthController_check
@@ -1014,6 +1014,11 @@ components:
             - DISPATCHER
             - STAFF
             - CLIENT
+        clientId:
+          type: string
+          description: >-
+            Required (and only meaningful) when roleCode is CLIENT — links the
+            resulting membership to this Client record.
       required:
         - email
         - roleCode

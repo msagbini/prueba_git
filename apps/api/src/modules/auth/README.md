@@ -32,21 +32,21 @@ email/
 
 ## Endpoints
 
-| Method & path                        | Auth                    | Notes                                                  |
-| ------------------------------------ | ----------------------- | ------------------------------------------------------ |
-| `POST /auth/signup`                  | Public                  | Creates org + owner in one transaction                 |
-| `POST /auth/login`                   | Public                  | Returns tokens, or a selection step for 2+ memberships |
-| `POST /auth/select-organization`     | Public (selectionToken) | Completes a multi-membership login                     |
-| `POST /auth/switch-organization`     | Required                | Move to a different membership without logging out     |
-| `POST /auth/refresh`                 | Public (refresh token)  | Rotates; reuse of a revoked token revokes the family   |
-| `POST /auth/logout`                  | Public (refresh token)  | Idempotent                                             |
-| `GET /auth/me`                       | Required                | Profile + every membership                             |
-| `POST /auth/verify-email`            | Public                  |                                                        |
-| `POST /auth/forgot-password`         | Public                  | Never reveals whether the email exists                 |
-| `POST /auth/reset-password`          | Public                  |                                                        |
-| `POST /organizations/me/invitations` | Required, Owner/Admin   |                                                        |
-| `GET /invitations/:token`            | Public                  | Preview before accepting                               |
-| `POST /invitations/:token/accept`    | Public, optional auth   | Branches on whether the email already has an account   |
+| Method & path                        | Auth                    | Notes                                                        |
+| ------------------------------------ | ----------------------- | ------------------------------------------------------------ |
+| `POST /auth/signup`                  | Public                  | Creates org + owner in one transaction                       |
+| `POST /auth/login`                   | Public                  | Returns tokens, or a selection step for 2+ memberships       |
+| `POST /auth/select-organization`     | Public (selectionToken) | Completes a multi-membership login                           |
+| `POST /auth/switch-organization`     | Required                | Move to a different membership without logging out           |
+| `POST /auth/refresh`                 | Public (refresh token)  | Rotates; reuse of a revoked token revokes the family         |
+| `POST /auth/logout`                  | Public (refresh token)  | Idempotent                                                   |
+| `GET /auth/me`                       | Required                | Profile + every membership                                   |
+| `POST /auth/verify-email`            | Public                  |                                                              |
+| `POST /auth/forgot-password`         | Public                  | Never reveals whether the email exists                       |
+| `POST /auth/reset-password`          | Public                  |                                                              |
+| `POST /organizations/me/invitations` | Required, Owner/Admin   | `clientId` required (and only valid) when `roleCode: CLIENT` |
+| `GET /invitations/:token`            | Public                  | Preview before accepting                                     |
+| `POST /invitations/:token/accept`    | Public, optional auth   | Branches on whether the email already has an account         |
 
 ## Using guards in other modules
 

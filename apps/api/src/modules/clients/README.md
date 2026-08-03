@@ -2,15 +2,15 @@
 
 Client (customer) records and their service/billing addresses.
 
-**Fase 2 scope**: contract only — see `clients.service.ts` and root
-`CONTRIBUTING.md`.
+`DELETE /clients/:id` soft-deletes (`deletedAt`) rather than deleting the
+row — a client's history (jobs, invoices) must stay attributable.
 
-| Method & path                 | Auth     | Notes |
-| ----------------------------- | -------- | ----- |
-| `GET /clients`                | Required |       |
-| `POST /clients`               | Required |       |
-| `GET /clients/:id`            | Required |       |
-| `PATCH /clients/:id`          | Required |       |
-| `DELETE /clients/:id`         | Required |       |
-| `GET /clients/:id/addresses`  | Required |       |
-| `POST /clients/:id/addresses` | Required |       |
+| Method & path                 | Auth                       | Notes                     |
+| ----------------------------- | -------------------------- | ------------------------- |
+| `GET /clients`                | Required, `clients.read`   | Excludes soft-deleted     |
+| `POST /clients`               | Required, `clients.manage` | Audit-logged              |
+| `GET /clients/:id`            | Required, `clients.read`   |                           |
+| `PATCH /clients/:id`          | Required, `clients.manage` | Audit-logged              |
+| `DELETE /clients/:id`         | Required, `clients.manage` | Soft-delete, audit-logged |
+| `GET /clients/:id/addresses`  | Required, `clients.read`   |                           |
+| `POST /clients/:id/addresses` | Required, `clients.manage` | Audit-logged              |
