@@ -1,14 +1,19 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import type { AuthenticatedUser } from '../../common/types/authenticated-request';
 import { JobsService } from './jobs.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
 import { CreateJobAssignmentDto } from './dto/create-job-assignment.dto';
 import { CreateJobServiceDto } from './dto/create-job-service.dto';
 
-/** Scheduled jobs, assignments and billed services. See `jobs.service.ts` for the Fase 2 stub scope note. */
+/** Scheduled jobs, assignments and billed services. */
 @ApiTags('jobs')
 @ApiBearerAuth()
+@UseGuards(PermissionsGuard)
 @Controller('jobs')
 export class JobsController {
   /**
@@ -19,73 +24,122 @@ export class JobsController {
 
   /**
    * Lists records.
+   * @param user the authenticated caller
    * @returns jobs visible to the caller.
    */
+  @RequirePermissions('jobs.read')
   @Get()
-  list() {
-    return this.jobsService.list();
+  list(@CurrentUser() user: AuthenticatedUser) {
+    return this.jobsService.list({ membershipId: user.membershipId, role: user.role });
   }
 
   /**
    * Creates a record.
+   * @param user the authenticated caller
    * @param dto the job to create
    * @returns the created record
    */
+  @RequirePermissions('jobs.manage')
   @Post()
-  create(@Body() dto: CreateJobDto) {
-    return this.jobsService.create(dto);
+  create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateJobDto) {
+    return this.jobsService.create(user.org, user.sub, dto);
   }
 
   /**
    * Fetches a single record.
+   * @param user the authenticated caller
    * @param id the job to fetch
    * @returns the matching record
    */
+  @RequirePermissions('jobs.read')
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.jobsService.findOne(id);
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.jobsService.findOne({ membershipId: user.membershipId, role: user.role }, id);
   }
 
   /**
    * Updates a record.
+   * @param user the authenticated caller
    * @param id the job to update
    * @param dto the fields to change
    * @returns the updated record
    */
+  @RequirePermissions('jobs.manage')
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateJobDto) {
-    return this.jobsService.update(id, dto);
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateJobDto,
+  ) {
+    return this.jobsService.update(
+      user.org,
+      user.sub,
+      { membershipId: user.membershipId, role: user.role },
+      id,
+      dto,
+    );
   }
 
   /**
    * Removes a record.
+   * @param user the authenticated caller
    * @param id the job to remove
    * @returns the removal result
    */
+  @RequirePermissions('jobs.manage')
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.jobsService.remove(id);
+  remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.jobsService.remove(
+      user.org,
+      user.sub,
+      { membershipId: user.membershipId, role: user.role },
+      id,
+    );
   }
 
   /**
    * Assigns staff to a job.
+   * @param user the authenticated caller
    * @param id the job to assign staff to
    * @param dto the membership to assign
    * @returns the created assignment
    */
+  @RequirePermissions('jobs.manage')
   @Post(':id/assignments')
-  createAssignment(@Param('id') id: string, @Body() dto: CreateJobAssignmentDto) {
-    return this.jobsService.createAssignment(id, dto);
+  createAssignment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: CreateJobAssignmentDto,
+  ) {
+    return this.jobsService.createAssignment(
+      user.org,
+      user.sub,
+      { membershipId: user.membershipId, role: user.role },
+      id,
+      dto,
+    );
   }
 
   /**
    * Adds a service to a job.
+   * @param user the authenticated caller
    * @param id the job to add a service to
    * @param dto the service and quantity to add
    * @returns the created job service
    */
+  @RequirePermissions('jobs.manage')
   @Post(':id/services')
-  createJobService(@Param('id') id: string, @Body() dto: CreateJobServiceDto) {
-    return this.jobsService.createJobService(id, dto);
+  createJobService(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: CreateJobServiceDto,
+  ) {
+    return this.jobsService.createJobService(
+      user.org,
+      user.sub,
+      { membershipId: user.membershipId, role: user.role },
+      id,
+      dto,
+    );
   }
 }
