@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
+import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 
-/** Payments module. Contract-only in Fase 2 — see payments.service.ts. */
+/** Payments module. */
 @Module({
+  imports: [AuditLogsModule],
   controllers: [PaymentsController],
   providers: [PaymentsService],
 })

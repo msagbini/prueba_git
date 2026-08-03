@@ -1,11 +1,16 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import type { AuthenticatedUser } from '../../common/types/authenticated-request';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 
-/** Payment records. See `payments.service.ts` for the Fase 2 stub scope note. */
+/** Payment records. */
 @ApiTags('payments')
 @ApiBearerAuth()
+@UseGuards(PermissionsGuard)
 @Controller('payments')
 export class PaymentsController {
   /**
@@ -16,30 +21,36 @@ export class PaymentsController {
 
   /**
    * Lists records.
+   * @param user the authenticated caller
    * @returns payments visible to the caller.
    */
+  @RequirePermissions('payments.read')
   @Get()
-  list() {
-    return this.paymentsService.list();
+  list(@CurrentUser() user: AuthenticatedUser) {
+    return this.paymentsService.list({ membershipId: user.membershipId, role: user.role });
   }
 
   /**
    * Creates a record.
+   * @param user the authenticated caller
    * @param dto the payment to record
    * @returns the created record
    */
+  @RequirePermissions('payments.manage')
   @Post()
-  create(@Body() dto: CreatePaymentDto) {
-    return this.paymentsService.create(dto);
+  create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreatePaymentDto) {
+    return this.paymentsService.create(user.org, user.sub, dto);
   }
 
   /**
    * Fetches a single record.
+   * @param user the authenticated caller
    * @param id the payment to fetch
    * @returns the matching record
    */
+  @RequirePermissions('payments.read')
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.paymentsService.findOne(id);
+  findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.paymentsService.findOne({ membershipId: user.membershipId, role: user.role }, id);
   }
 }
