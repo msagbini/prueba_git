@@ -1,11 +1,28 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { JobStatus, type Plan, type Subscription } from '@prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JobStatus, PlanCode, type Plan, type Subscription } from '@prisma/client';
+import Stripe from 'stripe';
+import type { EnvConfig } from '../../config/env.validation';
 import { TenantContextService } from '../../prisma/tenant-context.service';
 import type { TenantPrismaClient } from '../../prisma/run-in-tenant-transaction';
+import type { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { PlanLimitExceededException } from './plan-limit-exceeded.exception';
 
 /** A subscription joined with the plan it's on — what the UI needs to render billing status. */
 export type SubscriptionWithPlan = Subscription & { plan: Plan };
+
+/** Where to send the caller's browser to complete a plan purchase. */
+export interface CheckoutSession {
+  checkoutUrl: string;
+}
+
+/** The Stripe API version this integration was built and tested against. */
+const STRIPE_API_VERSION = '2026-07-29.dahlia' as const;
 
 /**
  * DOS's own billing relationship with an organization — distinct from
@@ -25,11 +42,17 @@ export type SubscriptionWithPlan = Subscription & { plan: Plan };
  */
 @Injectable()
 export class BillingService {
+  private stripeClient: Stripe | undefined;
+
   /**
-   * Constructs the service around the tenant-scoped Prisma client.
+   * Constructs the service around the tenant-scoped Prisma client and app config.
    * @param tenantContext the current request's tenant-scoped Prisma client
+   * @param config validated environment configuration, for the optional Stripe settings
    */
-  constructor(private readonly tenantContext: TenantContextService) {}
+  constructor(
+    private readonly tenantContext: TenantContextService,
+    private readonly config: ConfigService<EnvConfig, true>,
+  ) {}
 
   /**
    * Fetches the caller's active organization's subscription and plan.
@@ -137,5 +160,113 @@ export class BillingService {
         `Staff limit reached for the ${plan.name} plan (${plan.maxStaff}). Upgrade to add more.`,
       );
     }
+  }
+
+  /**
+   * Starts a Stripe Checkout session upgrading the caller's active
+   * organization to a paid plan.
+   * @param dto the target plan
+   * @returns the URL to redirect the caller's browser to
+   */
+  createMineCheckoutSession(dto: CreateCheckoutSessionDto): Promise<CheckoutSession> {
+    return this.createCheckoutSession(this.tenantContext.client, dto);
+  }
+
+  /**
+   * Starts a Stripe Checkout session upgrading an organization to a paid
+   * plan, creating (and persisting) a Stripe Customer for it first if it
+   * doesn't have one yet.
+   * @param client a Prisma client scoped to the target organization
+   * @param dto the target plan
+   * @returns the URL to redirect the caller's browser to
+   * @throws BadRequestException if `planCode` is `FREE` (nothing to check out)
+   * @throws ServiceUnavailableException if Stripe isn't configured, or the
+   *   target plan has no `stripePriceId` yet
+   */
+  async createCheckoutSession(
+    client: TenantPrismaClient,
+    dto: CreateCheckoutSessionDto,
+  ): Promise<CheckoutSession> {
+    if (dto.planCode === PlanCode.FREE) {
+      throw new BadRequestException(
+        'The Free plan has no checkout — it is the default for every organization.',
+      );
+    }
+
+    const stripe = this.getStripeClient();
+    const subscription = await this.getSubscription(client);
+    const plan = await client.plan.findUnique({ where: { code: dto.planCode } });
+    if (!plan) {
+      throw new BadRequestException(`Unknown plan: ${dto.planCode}`);
+    }
+    if (!plan.stripePriceId) {
+      throw new ServiceUnavailableException(
+        `The ${plan.name} plan is not yet available for purchase.`,
+      );
+    }
+
+    const stripeCustomerId =
+      subscription.stripeCustomerId ??
+      (await this.createStripeCustomer(client, stripe, subscription));
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      customer: stripeCustomerId,
+      line_items: [{ price: plan.stripePriceId, quantity: 1 }],
+      success_url: this.config.get('STRIPE_CHECKOUT_SUCCESS_URL', { infer: true }),
+      cancel_url: this.config.get('STRIPE_CHECKOUT_CANCEL_URL', { infer: true }),
+      client_reference_id: subscription.organizationId,
+      metadata: { organizationId: subscription.organizationId, planCode: plan.code },
+    });
+
+    if (!session.url) {
+      throw new ServiceUnavailableException('Stripe did not return a checkout URL.');
+    }
+    return { checkoutUrl: session.url };
+  }
+
+  /**
+   * Creates a Stripe Customer for an organization that doesn't have one
+   * yet, and persists its id onto the organization's `Subscription` row so
+   * future checkouts and webhook events reuse it.
+   * @param client a Prisma client scoped to the target organization
+   * @param stripe the Stripe client to create the customer with
+   * @param subscription the organization's subscription row to update
+   * @returns the new Stripe Customer's id
+   */
+  private async createStripeCustomer(
+    client: TenantPrismaClient,
+    stripe: Stripe,
+    subscription: SubscriptionWithPlan,
+  ): Promise<string> {
+    const customer = await stripe.customers.create({
+      metadata: { organizationId: subscription.organizationId },
+    });
+    await client.subscription.update({
+      where: { id: subscription.id },
+      data: { stripeCustomerId: customer.id },
+    });
+    return customer.id;
+  }
+
+  /**
+   * Lazily constructs (and caches) the Stripe client from `STRIPE_SECRET_KEY`.
+   * @returns a configured Stripe client
+   * @throws ServiceUnavailableException if `STRIPE_SECRET_KEY` isn't set —
+   *   this project has not yet been given real Stripe credentials, see
+   *   docs/technical-log/phase-4.md
+   */
+  private getStripeClient(): Stripe {
+    if (this.stripeClient) {
+      return this.stripeClient;
+    }
+    const secretKey = this.config.get('STRIPE_SECRET_KEY', { infer: true });
+    if (!secretKey) {
+      throw new ServiceUnavailableException(
+        'Billing is not configured on this deployment (missing STRIPE_SECRET_KEY).',
+      );
+    }
+    this.stripeClient = new Stripe(secretKey, { apiVersion: STRIPE_API_VERSION });
+    return this.stripeClient;
   }
 }

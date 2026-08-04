@@ -19,6 +19,18 @@ export const envSchema = z.object({
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
 
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
+
+  // Stripe (Fase 4 monetization) — all optional. Without a real Stripe
+  // account these are unset in every environment this project has been
+  // run in so far; BillingService degrades to a clear 503 rather than
+  // crashing the whole app over an unconfigured optional feature. See
+  // docs/technical-log/phase-4.md for what is/isn't live-verified.
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  /** Where Stripe Checkout redirects after a successful subscription purchase. */
+  STRIPE_CHECKOUT_SUCCESS_URL: z.string().default('http://localhost:5173/billing?checkout=success'),
+  /** Where Stripe Checkout redirects if the customer cancels out of the flow. */
+  STRIPE_CHECKOUT_CANCEL_URL: z.string().default('http://localhost:5173/billing?checkout=canceled'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

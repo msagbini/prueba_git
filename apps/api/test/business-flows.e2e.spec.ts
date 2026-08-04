@@ -419,4 +419,33 @@ describe('business flows (e2e)', () => {
         .expect(402);
     });
   });
+
+  describe('Stripe checkout', () => {
+    // This sandbox has no real Stripe credentials (STRIPE_SECRET_KEY is
+    // unset), so only the config-missing and input-validation branches are
+    // verifiable here — see docs/technical-log/phase-4.md.
+    it('rejects checkout for the Free plan', async () => {
+      await request(server())
+        .post('/organizations/me/subscription/checkout')
+        .set('Authorization', `Bearer ${ownerAccessToken}`)
+        .send({ planCode: 'FREE' })
+        .expect(400);
+    });
+
+    it('returns 503 for a paid plan when Stripe is not configured', async () => {
+      await request(server())
+        .post('/organizations/me/subscription/checkout')
+        .set('Authorization', `Bearer ${ownerAccessToken}`)
+        .send({ planCode: 'PRO' })
+        .expect(503);
+    });
+
+    it('rejects a non-Owner/Admin caller', async () => {
+      await request(server())
+        .post('/organizations/me/subscription/checkout')
+        .set('Authorization', `Bearer ${staffAccessToken}`)
+        .send({ planCode: 'PRO' })
+        .expect(403);
+    });
+  });
 });

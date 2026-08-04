@@ -197,6 +197,34 @@ paths:
           description: ''
       tags:
         - auth
+  /organizations/me/subscription:
+    get:
+      operationId: BillingController_getSubscription
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - billing
+      security:
+        - bearer: []
+  /organizations/me/subscription/checkout:
+    post:
+      operationId: BillingController_createCheckoutSession
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCheckoutSessionDto'
+      responses:
+        '201':
+          description: ''
+      tags:
+        - billing
+      security:
+        - bearer: []
   /organizations/me:
     get:
       operationId: OrganizationsController_getMine
@@ -890,6 +918,17 @@ paths:
         - payments
       security:
         - bearer: []
+  /plans:
+    get:
+      operationId: PlansController_list
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - plans
+      security:
+        - bearer: []
   /health:
     get:
       operationId: HealthController_check
@@ -1031,6 +1070,18 @@ components:
           type: string
         password:
           type: string
+    CreateCheckoutSessionDto:
+      type: object
+      properties:
+        planCode:
+          type: string
+          enum:
+            - FREE
+            - PRO
+            - BUSINESS
+          description: The plan to subscribe to — must not be FREE.
+      required:
+        - planCode
     UpdateOrganizationDto:
       type: object
       properties:
