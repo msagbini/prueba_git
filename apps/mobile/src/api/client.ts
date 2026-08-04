@@ -30,6 +30,31 @@ export class ApiError extends Error {
 }
 
 /**
+ * Reads the `role` claim out of an access token's payload, without
+ * verifying the signature — mirrors `apps/web`'s `decodeJwtRole`
+ * (`src/api/client.ts`). Display-only (which navigation stack to show),
+ * never an authorization decision — every route this gates is still
+ * enforced server-side by `PermissionsGuard` against the same token.
+ * React Native has provided `atob`/`btoa` as core globals since 0.72
+ * (this app targets 0.86), so no base64 polyfill is needed here.
+ * @param token the access token issued by `POST /auth/login` et al.
+ * @returns the token's `role` claim, or null if the token can't be parsed
+ */
+export function decodeJwtRole(token: string): string | null {
+  try {
+    const payloadSegment = token.split('.')[1];
+    if (!payloadSegment) return null;
+    const base64 = payloadSegment.replace(/-/g, '+').replace(/_/g, '/');
+    const payload: unknown = JSON.parse(atob(base64));
+    if (typeof payload !== 'object' || payload === null || !('role' in payload)) return null;
+    const role = (payload as { role: unknown }).role;
+    return typeof role === 'string' ? role : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Minimal typed fetch wrapper for the DOS API, mirroring `apps/web`'s
  * `src/api/client.ts`. Unlike the web client, this never sends
  * `credentials: 'include'` — the mobile app doesn't use the httpOnly

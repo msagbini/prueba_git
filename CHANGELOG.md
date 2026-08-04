@@ -44,6 +44,13 @@ deliberately unbuilt (`docs/technical-log/phase-9.md` has the full log).
   on another day, same `PATCH /jobs/:id` the edit form already uses).
   `GET /jobs` gained optional `scheduledFrom`/`scheduledTo` query
   params to support fetching one week at a time.
+- **Mobile client portal**: `apps/mobile` was Staff-only since Fase 6;
+  it now has a second, role-gated navigation stack for `CLIENT`
+  callers — `ClientHomeScreen`, `MyJobsScreen`, `MyInvoicesScreen`,
+  `MyInvoiceDetailScreen`, all read-only, mirroring `apps/web`'s
+  client portal. No PDF download on mobile (documented gap — needs a
+  file-saving library this bare RN app doesn't have, unverifiable
+  without a device).
 
 ### Added — Fase 9: Hardening y funcionalidad operativa
 

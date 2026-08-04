@@ -254,9 +254,6 @@ listan aquí para que la brecha esté documentada, no oculta:
 - **Cámara en `apps/mobile`** para adjuntar fotos desde el flujo de
   clock-out — bloqueado en tener un dispositivo/simulador real para
   verificarlo, mismo gap documentado desde Fase 6.
-- **Portal de cliente en `apps/mobile`**: el portal de cliente de esta
-  sección solo cubre `apps/web` — `apps/mobile` sigue siendo
-  Staff-only (ver Fase 6).
 - **Notificaciones más allá de auth** (recordatorio de cita, job
   asignado) — no hay módulo de notificaciones.
 - **Migraciones mayores de dependencias** (NestJS 10→11, react-router
@@ -486,6 +483,54 @@ una vista de calendario no tiene dónde ubicar.
   `scheduledFrom`/`scheduledTo` incluye un job dentro de la ventana y
   lo excluye fuera de ella.
 
+### Funcionalidad — portal de cliente en `apps/mobile`
+
+`apps/mobile` era Staff-only desde Fase 6. Se extiende con un segundo
+stack de navegación para el rol `Client`, reflejando el trabajo ya
+hecho en `apps/web` (más arriba en este mismo addendum) — mismo
+approach: decodificar `role` del access token, ramificar la UI, sin
+tocar el modelo de permisos del backend (ya existía desde Fase 2).
+
+- `decodeJwtRole()` portado a `apps/mobile/src/api/client.ts`, idéntico
+  al de `apps/web`. RN provee `atob`/`btoa` como globals del core desde
+  la 0.72 (esta app apunta a 0.86), así que no hace falta ningún
+  polyfill — sí hizo falta declarar el tipo ambiente
+  (`src/types/globals.d.ts`), porque `@react-native/typescript-config`
+  no incluye la lib DOM (no es un entorno de navegador) y por lo tanto
+  `tsc` no conocía `atob` sin esa declaración.
+- `AuthContext` gana `role`, poblado en el mismo punto único
+  (`applyTokens()`) que ya cubre las tres formas de obtener sesión
+  (login, restauración al abrir la app, selección de organización) —
+  no hubo que tocar cada call site por separado.
+- `RootNavigator` ahora elige entre tres stacks según
+  `status`/`role`: no autenticado, `ClientStack` (si `role === 'CLIENT'`),
+  o el `AppStack` de Staff existente (si no). `ClientStack`:
+  `ClientHomeScreen` (dos atajos, como el dashboard de cliente de
+  `apps/web`) → `MyJobsScreen` (solo lectura, sin acciones de
+  clock in/out — un Client no puede actuar sobre un job) y
+  `MyInvoicesScreen` → `MyInvoiceDetailScreen` (line items + pagos,
+  contraparte en pantalla completa del modal "View" de
+  `MyInvoicesPage` en web).
+- Se agregaron los tipos `Invoice`/`InvoiceLineItem`/`InvoiceWithLineItems`/
+  `Payment` a `apps/mobile/src/types/api.ts`, que hasta ahora solo
+  tenía tipos de `Job` (la app nunca había necesitado facturas).
+- **Deliberadamente sin botón de descarga de PDF**, a diferencia del
+  portal de `apps/web`: requeriría una librería de guardado de
+  archivos que esta app bare RN no tiene instalada, y no hay forma de
+  verificar que enlace correctamente sin un dispositivo o simulador
+  real — no se agrega y se deja sin verificar.
+- **Verificación, con la misma limitación de siempre para esta app**:
+  sin Android SDK/Xcode en este contenedor, no se pudo renderizar
+  ninguna pantalla en un dispositivo o simulador real (mismo gap
+  documentado desde Fase 6). Lo que sí se verificó: `tsc --noEmit`,
+  `eslint`, `jest` (11/11, incluyendo tests nuevos de `decodeJwtRole`
+  que confirman que `atob`/`btoa` funcionan tanto en el entorno de
+  Jest como se espera en el runtime de RN), y el bundle de Metro para
+  Android — y, del lado del backend real que estas pantallas
+  consumen, los mismos `GET /jobs`/`GET /invoices`/`GET /payments` ya
+  fueron ejercitados en vivo con un token real de rol `CLIENT` al
+  verificar el portal de `apps/web` más arriba en este documento.
+
 ### Verificación de este addendum
 
 - `pnpm --filter web run build` / `lint` / `test` — verde.
@@ -497,15 +542,15 @@ una vista de calendario no tiene dónde ubicar.
 - `docs/api/openapi.yaml` regenerado (`pnpm docs:api`) para incluir
   `GET /invoices/:id/pdf` y los nuevos query params de `GET /jobs`.
 - Tests nuevos: `decodeJwtRole()` (bien formado, sin claim `role`,
-  malformado), `AuthContext` (`role` reflejando el JWT tras
-  login/restauración de sesión, y `setSession()`), y el filtro de
-  fechas de `GET /jobs` — 14/14 tests de `apps/web`, 51/51 de
-  `apps/api`, verdes.
+  malformado) en `apps/web` y `apps/mobile`; `AuthContext` (`role`
+  reflejando el JWT tras login/restauración de sesión, y
+  `setSession()`) en `apps/web`; el filtro de fechas de `GET /jobs` en
+  `apps/api` — 14/14 tests de `apps/web`, 11/11 de `apps/mobile`,
+  51/51 de `apps/api`, verdes.
 
 **Fase 9 (incluyendo este addendum) completa.** Como en el cierre de
 Fase 8: no hay una fase siguiente definida en ningún documento del
-proyecto. De la lista de brechas deliberadas, quedan: portal de
-cliente en `apps/mobile`, cámara en mobile, notificaciones más allá de
-auth, y las migraciones mayores de dependencias — sin cambios respecto
-a lo documentado arriba. Cualquier dirección posterior necesita
-alcance definido por el stakeholder.
+proyecto. De la lista de brechas deliberadas, quedan: cámara en
+mobile, notificaciones más allá de auth, y las migraciones mayores de
+dependencias — sin cambios respecto a lo documentado arriba. Cualquier
+dirección posterior necesita alcance definido por el stakeholder.

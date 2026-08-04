@@ -77,3 +77,43 @@ export interface Job {
   serviceAddress: JobServiceAddress | null;
   jobServices: JobServiceLineItem[];
 }
+
+export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'VOID';
+
+export interface InvoiceLineItem {
+  id: string;
+  description: string;
+  quantity: string;
+  unitPrice: string;
+  lineTotal: string;
+}
+
+/** An invoice as returned by `GET /invoices` — used by the CLIENT-role portal screens. */
+export interface Invoice {
+  id: string;
+  clientId: string;
+  invoiceNumber: string;
+  status: InvoiceStatus;
+  issueDate: string;
+  dueDate: string;
+  subtotal: string;
+  taxAmount: string;
+  total: string;
+  currency: string;
+}
+
+export interface InvoiceWithLineItems extends Invoice {
+  lineItems: InvoiceLineItem[];
+}
+
+export type PaymentMethod = 'CASH' | 'CHECK' | 'CARD' | 'BANK_TRANSFER' | 'OTHER';
+
+export interface Payment {
+  id: string;
+  invoiceId: string;
+  amount: string;
+  method: PaymentMethod;
+  status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'REFUNDED';
+  paidAt: string | null;
+  referenceNumber: string | null;
+}

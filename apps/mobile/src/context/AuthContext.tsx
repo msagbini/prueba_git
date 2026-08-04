@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { apiFetch, setAccessToken } from '../api/client';
+import { apiFetch, decodeJwtRole, setAccessToken } from '../api/client';
 import { clearTokens, loadTokens, saveTokens } from '../auth/tokenStorage';
 import type { IssuedTokens, LoginResponse, MembershipSummary } from '../types/api';
 
@@ -14,6 +14,8 @@ type AuthStatus = 'loading' | 'unauthenticated' | 'needsOrganizationSelection' |
 interface AuthContextValue {
   status: AuthStatus;
   pendingSelection: PendingSelection | null;
+  /** The caller's role in their active organization (e.g. "CLIENT"), or null before a session exists. */
+  role: string | null;
   login: (email: string, password: string) => Promise<void>;
   selectOrganization: (organizationId: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -39,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
 
   // Deliberately run-once-on-mount: restoreSession only touches state
   // through setters, which are stable across renders, so it doesn't
@@ -70,6 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
   const applyTokens = async (tokens: IssuedTokens): Promise<void> => {
     setAccessToken(tokens.accessToken);
     setRefreshToken(tokens.refreshToken);
+    setRole(decodeJwtRole(tokens.accessToken));
     await saveTokens(tokens);
     setPendingSelection(null);
     setStatus('authenticated');
@@ -114,12 +118,15 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
     setAccessToken(null);
     setRefreshToken(null);
     setPendingSelection(null);
+    setRole(null);
     await clearTokens();
     setStatus('unauthenticated');
   };
 
   return (
-    <AuthContext.Provider value={{ status, pendingSelection, login, selectOrganization, logout }}>
+    <AuthContext.Provider
+      value={{ status, pendingSelection, role, login, selectOrganization, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );
