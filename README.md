@@ -8,16 +8,21 @@ maintenance, landscaping and general field services.
 
 ## Status
 
-**Fase 3 — MVP operativo: complete**, awaiting approval to start Fase 4
-(Monetización). The API's business modules (clients, services, staff,
-jobs/scheduling, invoicing, payments) are fully implemented — real CRUD,
-permission-scoped RBAC, row-level visibility (Staff/Client), and an audit
-trail — behind the same multi-tenant architecture built in Fase 2. The
-web and mobile apps are still routing/navigation scaffolds; real screens
-land in Fase 5/6. See
-[`docs/technical-log/phase-3.md`](docs/technical-log/phase-3.md) (and
-[`phase-2.md`](docs/technical-log/phase-2.md) for the foundational build)
-for the full log, and
+**Fase 4 — Monetización: complete**, awaiting approval to start Fase 5
+(Expansión). DOS now has tiered plans (Free/Pro/Business) with real
+usage-limit enforcement, and a real Stripe Checkout/webhook integration
+— unverified against Stripe's own servers pending real test credentials,
+but with every other code path (validation, config-missing handling,
+webhook signature verification) genuinely tested. The API's Fase 3
+business modules (clients, services, staff, jobs/scheduling, invoicing,
+payments) remain fully implemented — real CRUD, permission-scoped RBAC,
+row-level visibility (Staff/Client), and an audit trail — behind the same
+multi-tenant architecture built in Fase 2. The web and mobile apps are
+still routing/navigation scaffolds; real screens land in Fase 6/7. See
+[`docs/technical-log/phase-4.md`](docs/technical-log/phase-4.md) (and
+[`phase-3.md`](docs/technical-log/phase-3.md),
+[`phase-2.md`](docs/technical-log/phase-2.md) for prior phases) for the
+full log, and
 [`docs/architecture/overview.md`](docs/architecture/overview.md) for the
 system design.
 

@@ -5,6 +5,34 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added — Fase 4: Monetización
+
+- Tiered plans (Free/Pro/Business): `Plan` (global reference data) and
+  `Subscription` (tenant-scoped, 1:1 with `Organization`, RLS-protected)
+  schema, seeded with concrete prices and usage limits. Every
+  organization starts on Free at signup.
+- `GET /plans` and `GET /organizations/me/subscription` read endpoints.
+- Plan-limit enforcement (`modules/billing`): `maxClients`/
+  `maxActiveJobs`/`maxStaff` are checked before client creation, job
+  creation, Staff invitation acceptance, and promotion to Staff,
+  responding `402 Payment Required` when exceeded.
+- Stripe Checkout (`POST /organizations/me/subscription/checkout`,
+  Owner/Admin only) against the real `stripe` SDK — creates/reuses a
+  Stripe Customer and starts a subscription Checkout Session.
+- Stripe webhook handler (`POST /webhooks/stripe`) verifying
+  `Stripe-Signature` and syncing `Subscription` state on
+  `checkout.session.completed`/`customer.subscription.updated`/
+  `customer.subscription.deleted`.
+- e2e coverage (`apps/api/test/business-flows.e2e.spec.ts`) for plan
+  limits, checkout's verifiable-without-Stripe-credentials branches, and
+  a full offline round trip of the webhook handler using
+  `stripe.webhooks.generateTestHeaderString` against a locally-generated
+  secret.
+
+This project has not yet been given real Stripe credentials — see
+`docs/technical-log/phase-4.md` for exactly what is and isn't
+live-verified end-to-end.
+
 ### Added — Fase 3: MVP operativo
 
 - Real implementations for all 11 business modules (organizations,
