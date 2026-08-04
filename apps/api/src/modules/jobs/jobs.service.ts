@@ -15,6 +15,7 @@ import {
 import { toDateOrUndefined } from '../../common/to-date';
 import type { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { paginate, type PaginatedResult } from '../../common/pagination';
+import { SAFE_USER_SELECT } from '../../common/safe-user';
 import { TenantContextService } from '../../prisma/tenant-context.service';
 import { AuditLogWriterService } from '../audit-logs/audit-log-writer.service';
 import { BillingService } from '../billing/billing.service';
@@ -31,16 +32,21 @@ export interface JobCaller {
 
 /**
  * What `list`/`findOne` embed alongside a job — client contact info, the
- * service address, and billed services. Staff callers have `jobs.read`
- * but not `clients.read`/`services.read`, so this is the only way a
- * field-staff client (mobile app) can learn who/where/what a job is for;
- * without it, a Staff caller could see a job existed but nothing else
- * about it.
+ * service address, billed services, and assigned staff. Staff callers
+ * have `jobs.read` but not `clients.read`/`services.read`, so this is the
+ * only way a field-staff client (mobile app) can learn who/where/what a
+ * job is for; without it, a Staff caller could see a job existed but
+ * nothing else about it. `assignments` was added alongside the web
+ * dispatch UI (Fase 9) — without it, "assign staff" would be write-only,
+ * with no way to show who's already on a job.
  */
 const JOB_DETAILS_INCLUDE = {
   client: { select: { id: true, name: true, primaryContactName: true, phone: true, email: true } },
   serviceAddress: true,
   jobServices: { include: { service: { select: { id: true, name: true } } } },
+  assignments: {
+    include: { membership: { select: { id: true, user: { select: SAFE_USER_SELECT } } } },
+  },
 } satisfies Prisma.JobInclude;
 
 /** A job with the related data {@link JOB_DETAILS_INCLUDE} embeds. */

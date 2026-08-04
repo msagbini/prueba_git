@@ -97,9 +97,38 @@ export type StaffStatus = 'ACTIVE' | 'INACTIVE';
 
 export interface StaffProfile {
   id: string;
+  membershipId: string;
   employeeCode: string | null;
   hourlyRate: string | null;
   hireDate: string | null;
   status: StaffStatus;
   membership: { user: SafeUser };
+}
+
+export type JobStatus = 'DRAFT' | 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+
+export interface JobServiceLine {
+  id: string;
+  quantity: string;
+  service: { id: string; name: string };
+}
+
+export interface JobAssignment {
+  id: string;
+  status: 'ASSIGNED' | 'CONFIRMED' | 'DECLINED';
+  membership: { id: string; user: SafeUser };
+}
+
+export interface Job {
+  id: string;
+  clientId: string;
+  serviceAddressId: string | null;
+  status: JobStatus;
+  scheduledStart: string | null;
+  scheduledEnd: string | null;
+  notes: string | null;
+  client: { id: string; name: string };
+  serviceAddress: ClientAddress | null;
+  jobServices: JobServiceLine[];
+  assignments: JobAssignment[];
 }
