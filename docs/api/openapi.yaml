@@ -818,6 +818,58 @@ paths:
         - jobs
       security:
         - bearer: []
+  /jobs/{id}/attachments:
+    post:
+      operationId: JobsController_createAttachment
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '201':
+          description: ''
+      tags:
+        - jobs
+      security:
+        - bearer: []
+    get:
+      operationId: JobsController_listAttachments
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - jobs
+      security:
+        - bearer: []
+  /jobs/{id}/attachments/{attachmentId}:
+    get:
+      operationId: JobsController_downloadAttachment
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: attachmentId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - jobs
+      security:
+        - bearer: []
   /staff:
     get:
       operationId: StaffController_list

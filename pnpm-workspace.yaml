@@ -22,6 +22,20 @@ packageExtensions:
     peerDependenciesMeta:
       '@types/react':
         optional: true
+# @nestjs/platform-express pins its own multer as an exact transitive
+# version (2.0.2 as of NestJS 10.4.22 — the newest available on the 10.x
+# line), several major versions behind multer's own fixes for a handful
+# of DoS CVEs (deeply nested field names, incomplete cleanup, uncontrolled
+# recursion — see docs/technical-log/phase-9.md). That was a low-priority,
+# not-currently-reachable finding in the Fase 8 audit; Fase 9 adds a real
+# file-upload route (job photo attachments) that actually calls into
+# multer via FileInterceptor, making it worth fixing now rather than
+# waiting on a NestJS 11 migration. multer's upload API has been stable
+# across these versions, so forcing the newer patched version under
+# NestJS's own dependency is a safe, narrow override — not a wholesale
+# NestJS 11 upgrade.
+overrides:
+  multer: ^2.2.0
 allowBuilds:
   '@nestjs/core': true
   '@prisma/client': true

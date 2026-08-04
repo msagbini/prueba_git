@@ -18,6 +18,9 @@ coverage/
 # Prisma
 apps/api/prisma/dev.db
 
+# Local job-attachment uploads (UPLOADS_DIR default) — never real storage in dev/CI.
+apps/api/uploads/
+
 # Logs
 *.log
 npm-debug.log*

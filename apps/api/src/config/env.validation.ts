@@ -47,6 +47,9 @@ export const envSchema = z.object({
   SMTP_FROM: z.string().default('DOS <no-reply@dos.example.com>'),
   /** Base URL of the web app, used to build links embedded in emails (verify/reset/invitation). */
   WEB_APP_URL: z.string().default('http://localhost:5173'),
+
+  /** Local disk directory job-attachment uploads are written under, one subfolder per organization. */
+  UPLOADS_DIR: z.string().default('./uploads'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
