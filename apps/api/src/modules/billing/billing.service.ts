@@ -1,15 +1,26 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JobStatus, PlanCode, type Plan, type Subscription } from '@prisma/client';
+import {
+  JobStatus,
+  PlanCode,
+  SubscriptionStatus,
+  type Plan,
+  type Subscription,
+} from '@prisma/client';
 import Stripe from 'stripe';
 import type { EnvConfig } from '../../config/env.validation';
+import { PrismaService } from '../../prisma/prisma.service';
+import {
+  runInTenantTransaction,
+  type TenantPrismaClient,
+} from '../../prisma/run-in-tenant-transaction';
 import { TenantContextService } from '../../prisma/tenant-context.service';
-import type { TenantPrismaClient } from '../../prisma/run-in-tenant-transaction';
 import type { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { PlanLimitExceededException } from './plan-limit-exceeded.exception';
 
@@ -42,16 +53,23 @@ const STRIPE_API_VERSION = '2026-07-29.dahlia' as const;
  */
 @Injectable()
 export class BillingService {
+  private readonly logger = new Logger(BillingService.name);
   private stripeClient: Stripe | undefined;
 
   /**
    * Constructs the service around the tenant-scoped Prisma client and app config.
    * @param tenantContext the current request's tenant-scoped Prisma client
    * @param config validated environment configuration, for the optional Stripe settings
+   * @param prisma the unscoped Prisma client — the Stripe webhook handler
+   *   has no authenticated org context to intercept, so (like `signup`/
+   *   `acceptInvitation` in `modules/auth`, see ADR 0006) it resolves the
+   *   target organization from Stripe event metadata and opens its own
+   *   {@link runInTenantTransaction} rather than reading `tenantContext`
    */
   constructor(
     private readonly tenantContext: TenantContextService,
     private readonly config: ConfigService<EnvConfig, true>,
+    private readonly prisma: PrismaService,
   ) {}
 
   /**
@@ -217,6 +235,13 @@ export class BillingService {
       cancel_url: this.config.get('STRIPE_CHECKOUT_CANCEL_URL', { infer: true }),
       client_reference_id: subscription.organizationId,
       metadata: { organizationId: subscription.organizationId, planCode: plan.code },
+      // Copied onto the resulting Stripe Subscription object too, so
+      // customer.subscription.updated/deleted webhook events — which carry
+      // a Subscription, not the Checkout Session — can still be routed
+      // back to the right organization without an extra Stripe API call.
+      subscription_data: {
+        metadata: { organizationId: subscription.organizationId, planCode: plan.code },
+      },
     });
 
     if (!session.url) {
@@ -268,5 +293,152 @@ export class BillingService {
     }
     this.stripeClient = new Stripe(secretKey, { apiVersion: STRIPE_API_VERSION });
     return this.stripeClient;
+  }
+
+  /**
+   * Verifies and processes an incoming Stripe webhook event, syncing the
+   * relevant organization's `Subscription` row to Stripe's state.
+   * Unrecognized event types are acknowledged and ignored — Stripe's
+   * recommended handling for events a given integration doesn't care about.
+   * @param rawBody the exact request body bytes Stripe signed — must not
+   *   be a re-serialized/re-parsed copy, or signature verification fails
+   * @param signature the `Stripe-Signature` request header
+   * @throws ServiceUnavailableException if `STRIPE_WEBHOOK_SECRET` isn't configured
+   * @throws BadRequestException if the signature doesn't verify
+   */
+  async handleWebhookEvent(rawBody: Buffer, signature: string): Promise<void> {
+    const webhookSecret = this.config.get('STRIPE_WEBHOOK_SECRET', { infer: true });
+    if (!webhookSecret) {
+      throw new ServiceUnavailableException(
+        'Billing webhooks are not configured on this deployment (missing STRIPE_WEBHOOK_SECRET).',
+      );
+    }
+
+    // Signature verification is pure local cryptography keyed by the
+    // webhook secret, not `STRIPE_SECRET_KEY` — so this uses its own
+    // client instead of `getStripeClient()`, which requires
+    // STRIPE_SECRET_KEY and is reserved for real outbound Stripe calls
+    // (Customer/Checkout Session creation). Keeping the two independent
+    // means an environment can receive and verify webhooks correctly even
+    // before outbound billing calls are configured.
+    const stripe = new Stripe('sk_unused_webhook_signature_verification_only', {
+      apiVersion: STRIPE_API_VERSION,
+    });
+
+    let event: Stripe.Event;
+    try {
+      event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'invalid signature';
+      throw new BadRequestException(`Stripe webhook signature verification failed: ${message}`);
+    }
+
+    switch (event.type) {
+      case 'checkout.session.completed':
+        await this.onCheckoutSessionCompleted(
+          event.data.object as unknown as Stripe.Checkout.Session,
+        );
+        break;
+      case 'customer.subscription.updated':
+        await this.onSubscriptionUpdated(event.data.object as unknown as Stripe.Subscription);
+        break;
+      case 'customer.subscription.deleted':
+        await this.onSubscriptionUpdated(
+          event.data.object as unknown as Stripe.Subscription,
+          SubscriptionStatus.CANCELED,
+        );
+        break;
+      default:
+        this.logger.debug(`Ignoring unhandled Stripe webhook event type: ${event.type}`);
+    }
+  }
+
+  /**
+   * Links a newly-completed Checkout Session to the organization it was
+   * for: sets the subscription's plan, Stripe subscription id, and status.
+   * @param session the completed Checkout Session
+   */
+  private async onCheckoutSessionCompleted(session: Stripe.Checkout.Session): Promise<void> {
+    const organizationId =
+      session.metadata?.organizationId ?? session.client_reference_id ?? undefined;
+    const planCode = session.metadata?.planCode as PlanCode | undefined;
+    const stripeSubscriptionId =
+      typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
+
+    if (!organizationId || !planCode || !stripeSubscriptionId) {
+      this.logger.warn(
+        `checkout.session.completed (session ${session.id}) is missing organizationId/planCode/subscription id — ignoring`,
+      );
+      return;
+    }
+
+    await runInTenantTransaction(this.prisma, organizationId, async (tx) => {
+      const plan = await tx.plan.findUnique({ where: { code: planCode } });
+      if (!plan) {
+        this.logger.warn(
+          `checkout.session.completed (session ${session.id}) referenced unknown plan code ${planCode} — ignoring`,
+        );
+        return;
+      }
+      await tx.subscription.updateMany({
+        where: { organizationId },
+        data: { planId: plan.id, stripeSubscriptionId, status: SubscriptionStatus.ACTIVE },
+      });
+    });
+  }
+
+  /**
+   * Syncs an organization's `Subscription` row to a Stripe Subscription's
+   * current status and billing period.
+   * @param subscription the Stripe Subscription from the webhook event
+   * @param forcedStatus overrides the status derived from `subscription.status` —
+   *   used for `customer.subscription.deleted`, whose `status` is not
+   *   reliably `canceled` in every case Stripe fires that event for
+   */
+  private async onSubscriptionUpdated(
+    subscription: Stripe.Subscription,
+    forcedStatus?: SubscriptionStatus,
+  ): Promise<void> {
+    const organizationId = subscription.metadata?.organizationId;
+    if (!organizationId) {
+      this.logger.warn(
+        `Stripe subscription event for subscription ${subscription.id} is missing organizationId metadata — ignoring`,
+      );
+      return;
+    }
+
+    const status = forcedStatus ?? this.mapStripeSubscriptionStatus(subscription.status);
+    const periodEndSeconds = subscription.items.data[0]?.current_period_end;
+    const currentPeriodEnd = periodEndSeconds ? new Date(periodEndSeconds * 1000) : null;
+
+    await runInTenantTransaction(this.prisma, organizationId, (tx) =>
+      tx.subscription.updateMany({
+        where: { organizationId },
+        data: { status, stripeSubscriptionId: subscription.id, currentPeriodEnd },
+      }),
+    );
+  }
+
+  /**
+   * Maps a Stripe subscription status to DOS's own {@link SubscriptionStatus}.
+   * @param status the Stripe Subscription's `status` field
+   * @returns the closest DOS equivalent
+   */
+  private mapStripeSubscriptionStatus(status: Stripe.Subscription.Status): SubscriptionStatus {
+    switch (status) {
+      case 'active':
+        return SubscriptionStatus.ACTIVE;
+      case 'trialing':
+        return SubscriptionStatus.TRIALING;
+      case 'canceled':
+      case 'incomplete_expired':
+      case 'paused':
+        return SubscriptionStatus.CANCELED;
+      case 'past_due':
+      case 'unpaid':
+      case 'incomplete':
+      default:
+        return SubscriptionStatus.PAST_DUE;
+    }
   }
 }

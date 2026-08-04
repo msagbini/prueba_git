@@ -10,7 +10,11 @@ import type { EnvConfig } from './config/env.validation';
 
 /** Boots the NestJS application: global pipes, CORS, Swagger, and the HTTP listener. */
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: true additionally exposes `req.rawBody` (the exact bytes
+  // received) alongside the normal parsed `req.body` — needed by the
+  // Stripe webhook handler, which must verify a signature computed over
+  // the raw request body, not a re-serialized version of it.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   const config = app.get(ConfigService<EnvConfig, true>);
 
   // Needed to read the httpOnly refresh-token cookie set by AuthController

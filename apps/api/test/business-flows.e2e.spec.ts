@@ -2,8 +2,18 @@ import 'reflect-metadata';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import request from 'supertest';
+import Stripe from 'stripe';
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/modules/auth/email/email.service';
+
+/**
+ * A locally-generated secret, valid only within this test run — Stripe
+ * never sees it. It lets the webhook signature-verification path (real
+ * `stripe.webhooks.constructEvent`, not a mock) be exercised without a
+ * real Stripe account: `Stripe.webhooks.generateTestHeaderString` signs a
+ * payload the exact same way Stripe's servers would, using this secret.
+ */
+const STRIPE_WEBHOOK_SECRET = 'whsec_e2e_test_secret';
 
 /**
  * End-to-end coverage for the Fase 3 business modules, run against a real,
@@ -19,7 +29,12 @@ describe('business flows (e2e)', () => {
   let capturedInvitationToken: string | undefined;
 
   beforeAll(async () => {
-    app = await NestFactory.create(AppModule, { logger: false });
+    // Set before the app boots (env is validated once, at ConfigModule
+    // construction) so the Stripe webhook signature-verification path is
+    // exercisable offline, without real Stripe credentials — see the
+    // 'Stripe webhooks' describe block below and docs/technical-log/phase-4.md.
+    process.env.STRIPE_WEBHOOK_SECRET = STRIPE_WEBHOOK_SECRET;
+    app = await NestFactory.create(AppModule, { logger: false, rawBody: true });
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );
@@ -446,6 +461,112 @@ describe('business flows (e2e)', () => {
         .set('Authorization', `Bearer ${staffAccessToken}`)
         .send({ planCode: 'PRO' })
         .expect(403);
+    });
+  });
+
+  describe('Stripe webhooks', () => {
+    // Real signature verification against a locally-generated secret
+    // (STRIPE_WEBHOOK_SECRET, set in this file's beforeAll) — genuinely
+    // exercisable offline, unlike the outbound Stripe API calls in
+    // 'Stripe checkout' above. See docs/technical-log/phase-4.md.
+    const stripe = new Stripe('sk_test_e2e_signing_only', { apiVersion: '2026-07-29.dahlia' });
+    // Subscription.stripeSubscriptionId is globally unique, so a fixed id
+    // would collide with a previous run's row in this sandbox's
+    // persistent (non-pristine-per-run) database.
+    const fakeStripeSubscriptionId = `sub_test_${runId}`;
+    let organizationId: string;
+
+    beforeAll(async () => {
+      const res = await request(server())
+        .get('/organizations/me')
+        .set('Authorization', `Bearer ${ownerAccessToken}`)
+        .expect(200);
+      organizationId = res.body.id;
+    });
+
+    function sign(event: Record<string, unknown>): { payload: string; signature: string } {
+      const payload = JSON.stringify(event);
+      const signature = stripe.webhooks.generateTestHeaderString({
+        payload,
+        secret: STRIPE_WEBHOOK_SECRET,
+      });
+      return { payload, signature };
+    }
+
+    it('rejects a request with an invalid signature', async () => {
+      const { payload } = sign({
+        id: 'evt_bad',
+        type: 'checkout.session.completed',
+        data: { object: {} },
+      });
+      await request(server())
+        .post('/webhooks/stripe')
+        .set('Content-Type', 'application/json')
+        .set('stripe-signature', 't=1,v1=not-a-real-signature')
+        .send(payload)
+        .expect(400);
+    });
+
+    it('activates the subscription on checkout.session.completed and reflects it on GET', async () => {
+      const { payload, signature } = sign({
+        id: `evt_test_checkout_completed_${runId}`,
+        object: 'event',
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: `cs_test_${runId}`,
+            object: 'checkout.session',
+            subscription: fakeStripeSubscriptionId,
+            client_reference_id: organizationId,
+            metadata: { organizationId, planCode: 'PRO' },
+          },
+        },
+      });
+
+      await request(server())
+        .post('/webhooks/stripe')
+        .set('Content-Type', 'application/json')
+        .set('stripe-signature', signature)
+        .send(payload)
+        .expect(200);
+
+      const sub = await request(server())
+        .get('/organizations/me/subscription')
+        .set('Authorization', `Bearer ${ownerAccessToken}`)
+        .expect(200);
+      expect(sub.body.plan.code).toBe('PRO');
+      expect(sub.body.status).toBe('ACTIVE');
+      expect(sub.body.stripeSubscriptionId).toBe(fakeStripeSubscriptionId);
+    });
+
+    it('cancels the subscription on customer.subscription.deleted', async () => {
+      const { payload, signature } = sign({
+        id: `evt_test_subscription_deleted_${runId}`,
+        object: 'event',
+        type: 'customer.subscription.deleted',
+        data: {
+          object: {
+            id: fakeStripeSubscriptionId,
+            object: 'subscription',
+            status: 'canceled',
+            metadata: { organizationId, planCode: 'PRO' },
+            items: { object: 'list', data: [] },
+          },
+        },
+      });
+
+      await request(server())
+        .post('/webhooks/stripe')
+        .set('Content-Type', 'application/json')
+        .set('stripe-signature', signature)
+        .send(payload)
+        .expect(200);
+
+      const sub = await request(server())
+        .get('/organizations/me/subscription')
+        .set('Authorization', `Bearer ${ownerAccessToken}`)
+        .expect(200);
+      expect(sub.body.status).toBe('CANCELED');
     });
   });
 });
