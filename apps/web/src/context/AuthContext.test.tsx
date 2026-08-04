@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider, useAuth } from './AuthContext';
@@ -48,6 +49,38 @@ describe('AuthProvider', () => {
     await waitFor(() =>
       expect(screen.getByText('status:authenticated role:CLIENT')).toBeInTheDocument(),
     );
+  });
+
+  it('fires exactly one POST /auth/refresh even under StrictMode’s dev-mode double-invoke of mount effects', async () => {
+    // Regression test for a real bug: StrictMode double-invoking the
+    // mount effect fired two concurrent POST /auth/refresh calls
+    // sharing one not-yet-rotated cookie, tripping the server's
+    // refresh-token reuse-detection defense and silently logging a
+    // freshly-loaded page back out. See restoreStarted's jsdoc in
+    // AuthContext.tsx.
+    const accessToken = fakeJwt({ sub: 'u1', role: 'OWNER' });
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ accessToken, refreshToken: 'b' }), { status: 200 }),
+      );
+
+    render(
+      <StrictMode>
+        <AuthProvider>
+          <StatusProbe />
+        </AuthProvider>
+      </StrictMode>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText('status:authenticated role:OWNER')).toBeInTheDocument(),
+    );
+
+    const refreshCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes('/auth/refresh'),
+    );
+    expect(refreshCalls).toHaveLength(1);
   });
 
   it('falls back to unauthenticated when there is no valid session to restore', async () => {

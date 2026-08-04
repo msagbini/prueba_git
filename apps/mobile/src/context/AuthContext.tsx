@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { apiFetch, decodeJwtRole, setAccessToken } from '../api/client';
 import { clearTokens, loadTokens, saveTokens } from '../auth/tokenStorage';
 import type { IssuedTokens, LoginResponse, MembershipSummary } from '../types/api';
@@ -42,11 +42,24 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
+  // Guards against restoreSession() ever firing twice concurrently for
+  // one real mount (e.g. if StrictMode's dev-mode double-invoke of
+  // mount effects is enabled here in the future, as it already was in
+  // apps/web — see AuthContext.tsx there for the bug this caused: two
+  // concurrent POST /auth/refresh calls sharing the same not-yet-
+  // rotated token trip the server's reuse-detection defense and revoke
+  // the whole token family, silently logging the caller back out). A
+  // ref survives a simulated remount (only the effect body re-runs,
+  // component state doesn't reset), so it reliably limits the actual
+  // restore-session work to one call per real mount.
+  const restoreStarted = useRef(false);
 
   // Deliberately run-once-on-mount: restoreSession only touches state
   // through setters, which are stable across renders, so it doesn't
   // belong in the dependency array below.
   useEffect(() => {
+    if (restoreStarted.current) return;
+    restoreStarted.current = true;
     restoreSession();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

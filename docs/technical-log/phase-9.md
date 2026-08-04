@@ -727,12 +727,89 @@ mezclar con una migración de router.
 - `pnpm turbo run lint build test --force` — 9/9 tareas verdes en todo
   el monorepo.
 
+### Fix: race de rotación de refresh tokens (el hallazgo de arriba)
+
+El hallazgo documentado arriba se investigó hasta encontrar la causa
+raíz real, no solo la hipótesis. No era el `goto()` en rápida
+sucesión en sí — era **`StrictMode`**: en desarrollo, React invoca
+dos veces el efecto de montaje de un componente (monta → limpia →
+monta de nuevo) para exponer efectos impuros, y el efecto de
+restauración de sesión de `AuthContext` no tiene función de limpieza.
+Resultado: cada carga de página en dev disparaba **dos** `POST
+/auth/refresh` concurrentes compartiendo la misma cookie de refresh
+token, todavía no rotada por ninguno de los dos. El servidor procesa
+la segunda llegada como reuso de un token ya rotado por la primera —
+exactamente el comportamiento correcto de la defensa de detección de
+reuso (ADR 0004) ante un robo real de token — y revoca toda la
+familia, deslogueando en silencio a un usuario que apenas cargó la
+página por primera vez.
+
+Confirmado experimentalmente contando requests de red antes de
+cualquier cambio: una sola carga de página disparaba 2 llamadas a
+`/auth/refresh` con timestamps casi idénticos.
+
+- **Fix, deliberadamente acotado al cliente**: un guard con
+  `useRef(false)` en el efecto de montaje de `AuthContext`, en
+  `apps/web` y `apps/mobile`. El ref sobrevive el remontaje simulado
+  de `StrictMode` (solo se re-ejecuta el cuerpo del efecto, el estado
+  del componente no se resetea), así que limita el trabajo real de
+  restauración de sesión a una sola llamada por montaje real. No se
+  tocó la lógica de rotación/detección de reuso del servidor (Fase 2) — sigue siendo la misma defensa de seguridad, sin debilitar.
+  `apps/mobile` no tenía un repro confirmado (no usa `StrictMode` de
+  la misma forma), pero se aplicó el mismo guard de forma preventiva:
+  mismo patrón de bug latente, mismo fix de bajo costo, defensa en
+  profundidad directamente conectada al hallazgo.
+- **Test de regresión** en
+  `apps/web/src/context/AuthContext.test.tsx`, renderizando el
+  `AuthProvider` envuelto en `<StrictMode>` y verificando que
+  `fetch` reciba exactamente una llamada a `/auth/refresh`. Se
+  confirmó que el test es un guard válido: se revirtió temporalmente
+  solo el archivo del fix (`git stash push` de un único archivo,
+  dejando el test nuevo en su lugar) y el test falló con el mensaje
+  esperado (`expected [...] to have a length of 1 but got 2`);
+  restaurado el fix, vuelve a pasar.
+- **Verificado en vivo** contra el servidor de desarrollo real con
+  Playwright (`verify-double-refresh.mjs`): antes del fix, una sola
+  carga de página disparaba 2 llamadas a `/auth/refresh`; después del
+  fix, exactamente 1. También se repitió la recarga simple/secuencial
+  (F5 dos veces seguidas) confirmando que la sesión se mantiene
+  autenticada en ambas, y el flujo de logout por navegación
+  client-side sigue limpio.
+
+**Alcance explícitamente dejado fuera, con honestidad**: existe una
+segunda race, más angosta y distinta de esta, reproducible solo con
+recargas de página completas (`goto()`) en sucesión muy rápida —
+mucho más rápida que cualquier interacción humana real — donde una
+recarga nueva puede interrumpir la recepción del `Set-Cookie` de la
+rotación anterior antes de que el navegador la procese. Arreglar esa
+race de raíz requeriría tocar la lógica de rotación/detección de
+reuso del lado del servidor (Fase 2, código de seguridad sensible),
+lo cual excede el alcance de este fix — que se mantuvo
+deliberadamente del lado del cliente. Se deja documentado como
+brecha conocida, no oculta.
+
+#### Verificación de este fix
+
+- `pnpm --filter web run test` — 15/15 verde (incluye el test de
+  regresión nuevo).
+- `pnpm --filter web run build` / `lint` — verde.
+- `pnpm turbo run lint build test --force` — 9/9 tareas verdes en
+  todo el monorepo.
+- Verificación en vivo con Playwright contra el dev server real:
+  `verify-double-refresh.mjs` (1 sola llamada a `/auth/refresh` por
+  carga, antes eran 2),
+  `verify-single-reload-stays-authenticated.mjs` (dos F5 seguidos,
+  sesión se mantiene autenticada en ambos), `verify-logout-clean.mjs`
+  (logout por navegación client-side sigue limpio).
+
 **Fase 9 (incluyendo este addendum) completa.** Como en el cierre de
 Fase 8: no hay una fase siguiente definida en ningún documento del
 proyecto. De la lista de brechas deliberadas, quedan: cámara en
 mobile, la migración de NestJS 10→11 (superficie de cambios
 incompatibles — Express v5, sintaxis de rutas de path-to-regexp v8 —
 demasiado grande para verificar con el mismo rigor que el resto de
-este documento en una sola pasada), y el hallazgo nuevo de la
-rotación de refresh tokens documentado arriba. Cualquier dirección
-posterior necesita alcance definido por el stakeholder.
+este documento en una sola pasada), y la race angosta de recargas
+`goto()` en rápida sucesión documentada arriba (fuera de alcance
+porque requiere tocar la detección de reuso de tokens del servidor).
+Cualquier dirección posterior necesita alcance definido por el
+stakeholder.

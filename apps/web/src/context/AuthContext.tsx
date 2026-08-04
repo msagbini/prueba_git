@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { apiFetch, decodeJwtRole, setAccessToken } from '../api/client';
 
 interface LoginTokens {
@@ -55,8 +55,21 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }): JSX.Element {
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [role, setRole] = useState<string | null>(null);
+  // StrictMode double-invokes a mount effect in dev (mount → cleanup →
+  // mount again) to surface impure effects — this one has no cleanup,
+  // so without this guard it fires two concurrent POST /auth/refresh
+  // calls sharing the same not-yet-rotated cookie. The server treats
+  // the second arrival as reuse of an already-rotated token (correct
+  // behavior for real token theft — see ADR 0004) and revokes the
+  // whole family, silently logging the caller back out on their very
+  // first page load. A ref survives StrictMode's simulated remount
+  // (only the effect body re-runs, component state doesn't reset), so
+  // it reliably limits the actual restore-session work to one call.
+  const restoreStarted = useRef(false);
 
   useEffect(() => {
+    if (restoreStarted.current) return;
+    restoreStarted.current = true;
     apiFetch<LoginTokens>('/auth/refresh', { method: 'POST', body: JSON.stringify({}) })
       .then((tokens) => {
         setAccessToken(tokens.accessToken);

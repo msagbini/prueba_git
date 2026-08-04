@@ -74,17 +74,31 @@ deliberately unbuilt (`docs/technical-log/phase-9.md` has the full log).
   Playwright: all nav links, dashboard shortcuts, browser back/
   forward, logout, and protected/public route guarding.
 
-### Found, not fixed — Fase 9.1
+### Fixed — Fase 9.1
 
-- **Refresh-token rotation race**: several full-page reloads in quick
-  succession can trigger the reuse-detection defense and revoke the
-  caller's entire token family, forcing an unwanted logout. Found
-  while live-verifying the react-router migration above (an unrealistic
-  test pattern — rapid `goto()` calls — triggers it; realistic
-  client-side navigation does not). Root cause is in the Fase 2
-  refresh-token rotation logic, unrelated to routing; left as a
-  documented finding rather than fixed in the same commit as an
-  unrelated dependency bump.
+- **Refresh-token rotation race (false logout on page load)**: found
+  while live-verifying the react-router migration above. Root cause:
+  React `StrictMode`'s dev-mode double-invoke of `AuthContext`'s
+  mount effect fired two concurrent `POST /auth/refresh` calls
+  sharing one not-yet-rotated cookie/token; the server correctly
+  treated the second as reuse of an already-rotated token (ADR 0004's
+  theft-detection defense) and revoked the whole token family,
+  silently logging out a freshly-loaded page. Fixed with a `useRef`
+  mount guard in `AuthContext` (`apps/web` and, preventively,
+  `apps/mobile`) that survives `StrictMode`'s simulated remount and
+  limits session restoration to one call per real mount — no change
+  to the server's rotation/reuse-detection logic. Added a regression
+  test rendering `AuthProvider` under `<StrictMode>` and asserting
+  exactly one `/auth/refresh` call; confirmed it fails without the
+  fix and passes with it. Verified live against the dev server with
+  Playwright (2 calls → 1 per page load).
+  - **Known remaining gap, deliberately out of scope**: a narrower,
+    distinct race is still reproducible with full-page reloads
+    (`goto()`) in very rapid succession — faster than any real user
+    interaction — where a new load can race the browser's receipt of
+    the previous rotation's `Set-Cookie`. Fixing that would require
+    changing the server's security-sensitive reuse-detection logic
+    (Fase 2), which is out of scope for this client-side fix.
 
 ### Added — Fase 9: Hardening y funcionalidad operativa
 
