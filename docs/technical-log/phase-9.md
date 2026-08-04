@@ -258,10 +258,6 @@ listan aquí para que la brecha esté documentada, no oculta:
   forma de exportar o enviar un PDF a un cliente.
 - **Calendario/dispatch board**: `apps/web`'s Jobs page es una lista, no
   una vista de calendario/semana con arrastrar-y-soltar.
-- **Páginas web para los links de email** (`/verify-email`,
-  `/reset-password`, `/accept-invitation/:token`) — el mecanismo de
-  envío es real (ver arriba), las páginas que esos links abrirían no
-  existen todavía.
 - **Cámara en `apps/mobile`** para adjuntar fotos desde el flujo de
   clock-out — bloqueado en tener un dispositivo/simulador real para
   verificarlo, mismo gap documentado desde Fase 6.
@@ -272,7 +268,94 @@ listan aquí para que la brecha esté documentada, no oculta:
   es su propio esfuerzo de migración con su propia superficie de cambios
   incompatibles, no algo para apurar dentro de un hardening pass.
 
-**Fase 9 completa.** Como en el cierre de Fase 8: no hay una fase
-siguiente definida en ningún documento del proyecto. Cualquier dirección
-posterior — cerrar alguno de los ítems de arriba, u otra cosa —
+## Fase 9.1 — Optimización adicional
+
+El stakeholder pidió continuar: primero una auditoría real en vivo
+("córrelo, qué hay que mejorar? Diseño, optimizar, seguridad,
+innovación... funcionalidades, cosas que faltan aún"), luego
+autorización a actuar sobre todo lo encontrado ("dale con todo"), y
+finalmente pidió seguir optimizando "desde todos los aspectos" y
+cerrar funcionalidad que no existía antes. Esto se atacó en dos
+partes.
+
+### Rendimiento — encontrado y verificado, no especulado
+
+- Se recorrió cada `for (const ... of ...)` en los `*.service.ts` de
+  `apps/api` buscando N+1 reales: no se encontró ninguno (el módulo de
+  reports hace un `findMany` acotado por rango de fechas + agregación
+  en memoria, que es el patrón correcto).
+- El problema real: cada tabla tenía un único índice (`organizationId`).
+  Toda query de "hijos de X" (`jobId`, `invoiceId`, `clientId`,
+  `parentJobId`) y toda columna de `orderBy` de las páginas paginadas no
+  tenían índice de soporte más allá del de tenant. Se añadieron 12
+  índices (`Job`, `ClientAddress`, `JobService`, `JobAttachment`,
+  `JobAssignment`, `InvoiceLineItem`, `Payment`, `Client`, `Service`,
+  `StaffProfile`, `Invoice`) vía
+  `prisma/migrations/20260804115922_performance_indices/`.
+- Verificado, no asumido: `SELECT ... FROM pg_indexes` confirmó los 24
+  índices totales existen; `SET enable_seqscan = off; EXPLAIN ...`
+  confirmó que el planner sí usa `jobs_organization_id_scheduled_start_idx`
+  cuando le conviene (con los volúmenes de datos de prueba actuales el
+  planner prefiere seq scan, comportamiento correcto a esa escala, no
+  señal de que el índice no funcione).
+- `apps/web`: code-splitting por ruta con `React.lazy` + un único
+  `Suspense` en el nivel superior. Medido con `vite build` real: el
+  bundle inicial bajó de 213.71 kB (64.04 kB gzip) a 173.89 kB
+  (56.85 kB gzip). Confirmado con Playwright contra el dev server real
+  que los chunks de las páginas operativas solo cargan al navegar a
+  ellas, no en el login/dashboard inicial.
+
+### Funcionalidad — páginas web para los links de email
+
+Fase 9 dejó `SmtpEmailService` enviando links reales a
+`/verify-email`, `/reset-password` y `/accept-invitation/:token` que no
+tenían página en `apps/web` — brecha documentada arriba, cerrada ahora:
+
+- `AuthCard` — layout compartido factorizado de `LoginPage` (que además
+  se reescribió sobre este componente) para las cuatro pantallas nuevas.
+- `ForgotPasswordPage` (`/forgot-password`): dispara
+  `POST /auth/forgot-password`; muestra siempre el mismo mensaje de
+  éxito exista o no la cuenta, replicando el comportamiento del backend
+  de no confirmar ni negar la existencia del email.
+- `ResetPasswordPage` (`/reset-password?token=...`): lee el token de la
+  query string, llama `POST /auth/reset-password`, distingue token
+  inválido/expirado (400) de otros errores.
+- `VerifyEmailPage` (`/verify-email?token=...`): dispara
+  `POST /auth/verify-email` al montar, sin formulario.
+- `AcceptInvitationPage` (`/accept-invitation/:token`): trae el preview
+  público (`GET /invitations/:token`) y replica exactamente el
+  branching del backend (`AuthService.acceptInvitation`) — si
+  `useAuth().isAuthenticated` es true, acepta con body vacío
+  (el backend exige que el usuario autenticado sea el dueño del email
+  invitado); si no, pide nombre/apellido/contraseña para crear la
+  cuenta nueva; un 409 (cuenta existente, no autenticado como ese
+  usuario) muestra el mensaje de "iniciá sesión primero".
+- Las cuatro rutas se registraron en `App.tsx` como públicas (fuera de
+  `RequireAuth`), también lazy-loaded.
+- **Verificado en vivo, no solo con tests unitarios**: con la API y el
+  dev server de `apps/web` corriendo de verdad, se creó una
+  organización real por signup, se dispararon los tres emails
+  (`ConsoleEmailService` los loguea), se extrajeron los tokens reales
+  del log, y con Playwright contra Chromium real se probó: reset de
+  contraseña con token inválido y válido (con login posterior usando la
+  contraseña nueva), verificación de email con token inválido y válido,
+  y las tres ramas de aceptar invitación (cuenta nueva sin
+  autenticación, cuenta existente sin autenticación → 409, cuenta
+  existente autenticado como ese usuario → acepta directo sin mostrar
+  el formulario). Las 9 verificaciones live pasaron.
+
+### Verificación de este addendum
+
+- `pnpm --filter web run build` / `lint` / `test` — verde.
+- `pnpm turbo run lint build test --force` — 9/9 tareas verdes en todo
+  el monorepo (`api`, `web`, `mobile`, `config`).
+- Migración de índices aplicada limpiamente contra Postgres local
+  (`prisma migrate dev`), sin downtime porque son solo `CREATE INDEX`
+  aditivos.
+
+**Fase 9 (incluyendo este addendum) completa.** Como en el cierre de
+Fase 8: no hay una fase siguiente definida en ningún documento del
+proyecto. La generación de PDF de facturas queda como el siguiente
+ítem identificado y explícitamente pendiente; el resto de la lista de
+brechas deliberadas sigue vigente. Cualquier dirección posterior
 necesita alcance definido por el stakeholder.

@@ -5,6 +5,27 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added — Fase 9.1: Optimización adicional
+
+Stakeholder-directed follow-up to Fase 9 — further optimization "from
+all aspects" plus closing functionality gaps Fase 9 had documented as
+deliberately unbuilt (`docs/technical-log/phase-9.md` has the full log).
+
+- **Web auth pages for email links**: `ForgotPasswordPage`,
+  `ResetPasswordPage`, `VerifyEmailPage`, `AcceptInvitationPage` — the
+  four pages `SmtpEmailService`'s real emails (shipped in Fase 9) link
+  to, which didn't exist in `apps/web` until now. `AcceptInvitationPage`
+  mirrors the API's exact authenticated-vs-new-account branching logic.
+- **Database indices**: 12 new indices across `Job`, `ClientAddress`,
+  `JobService`, `JobAttachment`, `JobAssignment`, `InvoiceLineItem`,
+  `Payment`, `Client`, `Service`, `StaffProfile`, and `Invoice` —
+  every FK "get children of X" lookup and paginated-list `orderBy`
+  column previously had no supporting index beyond the tenant-scoping
+  one.
+- **Route-level code-splitting** (`apps/web`) via `React.lazy`: initial
+  bundle down from 213.71 kB (64.04 kB gzip) to 173.89 kB (56.85 kB
+  gzip), measured via `vite build`.
+
 ### Added — Fase 9: Hardening y funcionalidad operativa
 
 Not part of the original 8-phase roadmap (that closed at Fase 8) —

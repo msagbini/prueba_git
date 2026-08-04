@@ -25,6 +25,23 @@ const InvoicesPage = lazy(() =>
   import('./pages/InvoicesPage').then((m) => ({ default: m.InvoicesPage })),
 );
 
+// The unauthenticated email-link pages (forgot/reset password, verify
+// email, accept invitation) — like the operational pages, only a small
+// fraction of visits ever hit these, so they stay out of the initial
+// /login bundle too.
+const ForgotPasswordPage = lazy(() =>
+  import('./pages/ForgotPasswordPage').then((m) => ({ default: m.ForgotPasswordPage })),
+);
+const ResetPasswordPage = lazy(() =>
+  import('./pages/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })),
+);
+const VerifyEmailPage = lazy(() =>
+  import('./pages/VerifyEmailPage').then((m) => ({ default: m.VerifyEmailPage })),
+);
+const AcceptInvitationPage = lazy(() =>
+  import('./pages/AcceptInvitationPage').then((m) => ({ default: m.AcceptInvitationPage })),
+);
+
 /**
  * Gates the authenticated routes: redirects to /login once session
  * restore has resolved to "no session," but renders nothing (rather than
@@ -55,6 +72,10 @@ function AppRoutes(): JSX.Element {
     <Suspense fallback={null}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/accept-invitation/:token" element={<AcceptInvitationPage />} />
         <Route
           element={
             <RequireAuth>

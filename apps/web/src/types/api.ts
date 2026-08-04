@@ -171,3 +171,10 @@ export interface Job {
   jobServices: JobServiceLine[];
   assignments: JobAssignment[];
 }
+
+export interface InvitationPreview {
+  organizationName: string;
+  role: string;
+  invitedByName: string;
+  email: string;
+}
