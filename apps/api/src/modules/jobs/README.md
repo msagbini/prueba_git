@@ -20,11 +20,41 @@ but had no way to be set until Fase 5, when `modules/reports`'
 staff-performance report needed them for "hours worked".
 
 `GET /jobs`/`GET /jobs/:id` embed `client` (id/name/contact info),
-`serviceAddress` and `jobServices` (with the service name) — Staff holds
+`serviceAddress`, `jobServices` (with the service name) and `assignments`
+(with the assigned staff member's safe user fields) — Staff holds
 `jobs.read` but not `clients.read`/`services.read`, so without this a
 Staff caller could see that a job existed but nothing about who it's for
-or where to go. Added in Fase 6 for the mobile app's jobs list/detail
-screens.
+or where to go. `client`/`serviceAddress`/`jobServices` were added in
+Fase 6 for the mobile app's jobs list/detail screens; `assignments` in
+Fase 9, so the web dispatch UI could show who's already on a job instead
+of "assign staff" being write-only.
+
+`GET /jobs` is paginated (`?page=&pageSize=`, capped at 100 — see
+`common/pagination.ts`) since Fase 9; the response is
+`{ items, page, pageSize, total, totalPages }`, not a bare array.
+
+### Recurring jobs (Fase 9)
+
+`recurrenceRule` (an RFC 5545 RRULE option string, e.g.
+`FREQ=WEEKLY;INTERVAL=2`) has existed on `Job` since Fase 2, but nothing
+processed it until Fase 9. `RecurringJobsService` runs daily
+(`@nestjs/schedule`) and, for every organization, materializes the next
+due occurrence (7-day lookahead) of any job with a `recurrenceRule` and
+no `parentJobId` (a "root") as a real child `Job` — idempotent, and
+scoped through the same RLS-protected path every request uses. See that
+service's own doc comments for the one real architectural wrinkle: a
+background job has no per-request tenant context, so it needs a narrow,
+dedicated RLS policy just to enumerate organizations.
+
+### Attachments (Fase 9)
+
+`POST /jobs/:id/attachments` (multipart, field name `file`) uploads a
+photo (JPEG/PNG/WebP, 10MB max) as evidence on a job — before/after
+cleaning photos, most concretely. Stored on local disk under
+`UPLOADS_DIR`, one subdirectory per organization; served back through
+`GET /jobs/:id/attachments/:attachmentId` (authenticated, tenant-scoped
+streaming — not static file serving, which would make a guessable path
+leak another organization's photos) rather than a public URL.
 
 `POST /jobs/:id/start`/`/complete` ("clock in"/"clock out", Fase 6) let
 the job's assigned Staff member — or Owner/Admin/Dispatcher — transition
@@ -35,14 +65,17 @@ starting your own work requires). Gated to `jobs.read` plus the same
 row-level visibility check as `list`/`findOne`; Client callers are
 explicitly rejected (403) even though they hold `jobs.read` too.
 
-| Method & path                | Auth                    | Notes                                              |
-| ---------------------------- | ----------------------- | -------------------------------------------------- |
-| `GET /jobs`                  | Required, `jobs.read`   | Staff: own assignments; Client: own jobs; enriched |
-| `POST /jobs`                 | Required, `jobs.manage` | Audit-logged                                       |
-| `GET /jobs/:id`              | Required, `jobs.read`   | Same row-level visibility as list; enriched        |
-| `PATCH /jobs/:id`            | Required, `jobs.manage` | Audit-logged                                       |
-| `DELETE /jobs/:id`           | Required, `jobs.manage` | Soft-delete, audit-logged                          |
-| `POST /jobs/:id/start`       | Required, `jobs.read`   | Not Client; `DRAFT`/`SCHEDULED` → `IN_PROGRESS`    |
-| `POST /jobs/:id/complete`    | Required, `jobs.read`   | Not Client; `IN_PROGRESS` → `COMPLETED`            |
-| `POST /jobs/:id/assignments` | Required, `jobs.manage` | Assign staff, audit-logged                         |
-| `POST /jobs/:id/services`    | Required, `jobs.manage` | Snapshots price, audit-logged                      |
+| Method & path                             | Auth                    | Notes                                              |
+| ----------------------------------------- | ----------------------- | -------------------------------------------------- |
+| `GET /jobs`                               | Required, `jobs.read`   | Staff: own assignments; Client: own jobs; enriched |
+| `POST /jobs`                              | Required, `jobs.manage` | Audit-logged                                       |
+| `GET /jobs/:id`                           | Required, `jobs.read`   | Same row-level visibility as list; enriched        |
+| `PATCH /jobs/:id`                         | Required, `jobs.manage` | Audit-logged                                       |
+| `DELETE /jobs/:id`                        | Required, `jobs.manage` | Soft-delete, audit-logged                          |
+| `POST /jobs/:id/start`                    | Required, `jobs.read`   | Not Client; `DRAFT`/`SCHEDULED` → `IN_PROGRESS`    |
+| `POST /jobs/:id/complete`                 | Required, `jobs.read`   | Not Client; `IN_PROGRESS` → `COMPLETED`            |
+| `POST /jobs/:id/assignments`              | Required, `jobs.manage` | Assign staff, audit-logged                         |
+| `POST /jobs/:id/services`                 | Required, `jobs.manage` | Snapshots price, audit-logged                      |
+| `POST /jobs/:id/attachments`              | Required, `jobs.read`   | Multipart upload (`file`), audit-logged            |
+| `GET /jobs/:id/attachments`               | Required, `jobs.read`   | Same row-level visibility as list                  |
+| `GET /jobs/:id/attachments/:attachmentId` | Required, `jobs.read`   | Streams the file, tenant-scoped                    |

@@ -27,7 +27,8 @@ decorators/
   require-permissions.decorator.ts @RequirePermissions(...)
 email/
   email.service.ts                 Port (abstract class)
-  console-email.service.ts         Fase 2 stub implementation (logs only)
+  console-email.service.ts         Logging fallback — bound when SMTP_HOST is unset
+  smtp-email.service.ts             Real provider (nodemailer), bound when SMTP_HOST is set (Fase 9)
 ```
 
 ## Endpoints
@@ -61,11 +62,13 @@ remove(...) { ... }
 this — every other feature module imports `AuthModule` (or just these
 guards) rather than re-implementing role checks.
 
-## Known Fase 2 simplifications
+## Known simplifications
 
-- Email is a logging stub (`ConsoleEmailService`) — see ADR list in
-  `docs/technical-log/phase-2.md` for the real-provider decision, deferred
-  past this phase.
+- Email: `AuthModule` binds `SmtpEmailService` (real SMTP delivery via
+  nodemailer) whenever `SMTP_HOST` is configured, else `ConsoleEmailService`
+  (logs instead of sending) — see `docs/technical-log/phase-9.md`. No real
+  SMTP credentials exist in this project, so live delivery is unverified;
+  the DI wiring and graceful-degradation-on-send-failure behavior are.
 - The refresh-token cookie is always set (web pattern) _and_ the raw
   refresh token is always included in the JSON body (mobile pattern) —
   simplest uniform contract given the backend can't reliably distinguish

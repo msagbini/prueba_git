@@ -5,6 +5,32 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added — Fase 9: Hardening y funcionalidad operativa
+
+Not part of the original 8-phase roadmap (that closed at Fase 8) —
+stakeholder-directed follow-up work from a technical audit
+(`docs/technical-log/phase-9.md` has the full log).
+
+- **Operational web UI** — five real CRUD pages (`apps/web`) against
+  APIs that had existed since Fase 3 with no UI in front of them:
+  Clients (list/create/edit/addresses), Services (catalog), Staff
+  (invite/edit), Jobs (list/create/edit/assign staff/bill services),
+  Invoices (create/line items/record payments). A small shared
+  component layer (`components/ui/`: Button, Field, Modal, Pagination).
+- **Pagination** on every list endpoint (`clients`, `jobs`, `invoices`,
+  `payments`, `staff`, `services`) — `?page=&pageSize=`, capped at 100.
+- **Real transactional email** (`SmtpEmailService`, nodemailer),
+  replacing the Fase 2 console-only stub whenever `SMTP_HOST` is
+  configured.
+- **Recurring job automation**: `Job.recurrenceRule` (stored since Fase
+  2, never processed) now materializes real job instances daily via a
+  new `RecurringJobsService`.
+- **Job photo attachments**: upload/list/authenticated-download of
+  photo evidence on a job, local disk storage.
+- **Security hardening**: a stricter per-route rate limit on
+  login/signup/forgot-password; a pnpm override fixing multer's
+  high-severity DoS CVEs underneath `@nestjs/platform-express`.
+
 ### Added — Fase 8: Comercialización
 
 - Real billing portal in `apps/web` (`pages/BillingPage.tsx`): current
