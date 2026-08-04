@@ -65,3 +65,21 @@ export interface ClientAddress {
   postalCode: string;
   country: string;
 }
+
+export interface ServiceCategory {
+  id: string;
+  name: string;
+}
+
+export type PricingType = 'HOURLY' | 'FIXED' | 'PER_UNIT';
+
+export interface Service {
+  id: string;
+  categoryId: string | null;
+  name: string;
+  description: string | null;
+  pricingType: PricingType;
+  unitLabel: string | null;
+  basePrice: string;
+  isActive: boolean;
+}
