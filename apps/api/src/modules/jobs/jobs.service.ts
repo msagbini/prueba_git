@@ -1,5 +1,12 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  JobStatus,
+  Prisma,
   RoleCode,
   type Job,
   type JobAssignment,
@@ -19,6 +26,23 @@ export interface JobCaller {
   membershipId: string;
   role: string;
 }
+
+/**
+ * What `list`/`findOne` embed alongside a job — client contact info, the
+ * service address, and billed services. Staff callers have `jobs.read`
+ * but not `clients.read`/`services.read`, so this is the only way a
+ * field-staff client (mobile app) can learn who/where/what a job is for;
+ * without it, a Staff caller could see a job existed but nothing else
+ * about it.
+ */
+const JOB_DETAILS_INCLUDE = {
+  client: { select: { id: true, name: true, primaryContactName: true, phone: true, email: true } },
+  serviceAddress: true,
+  jobServices: { include: { service: { select: { id: true, name: true } } } },
+} satisfies Prisma.JobInclude;
+
+/** A job with the related data {@link JOB_DETAILS_INCLUDE} embeds. */
+export type JobWithDetails = Prisma.JobGetPayload<{ include: typeof JOB_DETAILS_INCLUDE }>;
 
 /**
  * Scheduled jobs: creation, status/scheduling updates, staff assignment
@@ -49,12 +73,13 @@ export class JobsService {
   /**
    * Lists records.
    * @param caller the authenticated caller, for row-level visibility
-   * @returns jobs visible to the caller
+   * @returns jobs visible to the caller, with client/address/services details
    */
-  async list(caller: JobCaller): Promise<Job[]> {
+  async list(caller: JobCaller): Promise<JobWithDetails[]> {
     return this.tenantContext.client.job.findMany({
       where: { deletedAt: null, ...(await this.visibilityFilter(caller)) },
       orderBy: { scheduledStart: 'asc' },
+      include: JOB_DETAILS_INCLUDE,
     });
   }
 
@@ -101,9 +126,9 @@ export class JobsService {
    * Fetches a single record.
    * @param caller the authenticated caller, for row-level visibility
    * @param id the job to fetch
-   * @returns the matching record
+   * @returns the matching record, with client/address/services details
    */
-  async findOne(caller: JobCaller, id: string): Promise<Job> {
+  async findOne(caller: JobCaller, id: string): Promise<JobWithDetails> {
     return this.findOrThrow(caller, id);
   }
 
@@ -183,6 +208,95 @@ export class JobsService {
       before,
       after,
     });
+  }
+
+  /**
+   * Marks a job as started ("clock in"): transitions `DRAFT`/`SCHEDULED`
+   * to `IN_PROGRESS` and records `actualStart` as now. Reuses
+   * `findOrThrow`'s row-level visibility check as the authorization: a
+   * Staff caller can only start a job they're assigned to (or get a 404,
+   * same as any other job they can't see); Owner/Admin/Dispatcher can
+   * start any job. Deliberately does **not** require `jobs.manage` — that
+   * permission covers reassignment/rescheduling/deletion, well beyond
+   * what a field-staff caller starting their own work needs.
+   * @param organizationId the caller's active organization
+   * @param actorUserId the caller, for the audit trail
+   * @param caller the authenticated caller, for row-level visibility
+   * @param id the job to start
+   * @returns the updated record
+   * @throws ForbiddenException if the caller is a Client
+   * @throws BadRequestException if the job isn't `DRAFT` or `SCHEDULED`
+   */
+  async start(
+    organizationId: string,
+    actorUserId: string,
+    caller: JobCaller,
+    id: string,
+  ): Promise<Job> {
+    this.assertCanClock(caller);
+    const before = await this.findOrThrow(caller, id);
+    if (before.status !== JobStatus.DRAFT && before.status !== JobStatus.SCHEDULED) {
+      throw new BadRequestException(`Cannot start a job with status ${before.status}.`);
+    }
+
+    const after = await this.tenantContext.client.job.update({
+      where: { id },
+      data: { status: JobStatus.IN_PROGRESS, actualStart: new Date() },
+    });
+
+    await this.auditLog.record({
+      organizationId,
+      actorUserId,
+      action: 'job.started',
+      entityType: 'Job',
+      entityId: id,
+      before,
+      after,
+    });
+
+    return after;
+  }
+
+  /**
+   * Marks a job as completed ("clock out"): transitions `IN_PROGRESS` to
+   * `COMPLETED` and records `actualEnd` as now. Same authorization as
+   * {@link start}.
+   * @param organizationId the caller's active organization
+   * @param actorUserId the caller, for the audit trail
+   * @param caller the authenticated caller, for row-level visibility
+   * @param id the job to complete
+   * @returns the updated record
+   * @throws ForbiddenException if the caller is a Client
+   * @throws BadRequestException if the job isn't `IN_PROGRESS`
+   */
+  async complete(
+    organizationId: string,
+    actorUserId: string,
+    caller: JobCaller,
+    id: string,
+  ): Promise<Job> {
+    this.assertCanClock(caller);
+    const before = await this.findOrThrow(caller, id);
+    if (before.status !== JobStatus.IN_PROGRESS) {
+      throw new BadRequestException(`Cannot complete a job with status ${before.status}.`);
+    }
+
+    const after = await this.tenantContext.client.job.update({
+      where: { id },
+      data: { status: JobStatus.COMPLETED, actualEnd: new Date() },
+    });
+
+    await this.auditLog.record({
+      organizationId,
+      actorUserId,
+      action: 'job.completed',
+      entityType: 'Job',
+      entityId: id,
+      before,
+      after,
+    });
+
+    return after;
   }
 
   /**
@@ -282,12 +396,13 @@ export class JobsService {
    * Fetches a non-deleted, caller-visible job or throws if it can't be found.
    * @param caller the authenticated caller, for row-level visibility
    * @param id the job to fetch
-   * @returns the matching record
+   * @returns the matching record, with client/address/services details
    * @throws NotFoundException if no such job is visible to the caller
    */
-  private async findOrThrow(caller: JobCaller, id: string): Promise<Job> {
+  private async findOrThrow(caller: JobCaller, id: string): Promise<JobWithDetails> {
     const job = await this.tenantContext.client.job.findFirst({
       where: { id, deletedAt: null, ...(await this.visibilityFilter(caller)) },
+      include: JOB_DETAILS_INCLUDE,
     });
     if (!job) {
       throw new NotFoundException('Job not found.');
@@ -316,6 +431,19 @@ export class JobsService {
       return { clientId: membership?.clientId ?? '00000000-0000-0000-0000-000000000000' };
     }
     return {};
+  }
+
+  /**
+   * Rejects Client callers from starting/completing a job — clocking in/
+   * out is a field-staff action, not something a Client's portal access
+   * should be able to trigger.
+   * @param caller the authenticated caller
+   * @throws ForbiddenException if the caller is a Client
+   */
+  private assertCanClock(caller: JobCaller): void {
+    if (caller.role === RoleCode.CLIENT) {
+      throw new ForbiddenException('Clients cannot start or complete jobs.');
+    }
   }
 
   /**

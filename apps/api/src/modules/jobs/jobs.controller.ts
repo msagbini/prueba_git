@@ -98,6 +98,41 @@ export class JobsController {
   }
 
   /**
+   * Starts a job ("clock in"). Any caller who can see the job may start
+   * it (Staff: only if assigned), except Client.
+   * @param user the authenticated caller
+   * @param id the job to start
+   * @returns the updated record
+   */
+  @RequirePermissions('jobs.read')
+  @Post(':id/start')
+  start(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.jobsService.start(
+      user.org,
+      user.sub,
+      { membershipId: user.membershipId, role: user.role },
+      id,
+    );
+  }
+
+  /**
+   * Completes a job ("clock out"). Same authorization as `start`.
+   * @param user the authenticated caller
+   * @param id the job to complete
+   * @returns the updated record
+   */
+  @RequirePermissions('jobs.read')
+  @Post(':id/complete')
+  complete(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.jobsService.complete(
+      user.org,
+      user.sub,
+      { membershipId: user.membershipId, role: user.role },
+      id,
+    );
+  }
+
+  /**
    * Assigns staff to a job.
    * @param user the authenticated caller
    * @param id the job to assign staff to

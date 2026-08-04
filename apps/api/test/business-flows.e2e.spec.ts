@@ -226,6 +226,46 @@ describe('business flows (e2e)', () => {
       .expect(403);
   });
 
+  it('embeds client/address/service details Staff has no other way to read', async () => {
+    const jobsAsStaff = await request(server())
+      .get('/jobs')
+      .set('Authorization', `Bearer ${staffAccessToken}`)
+      .expect(200);
+    expect(jobsAsStaff.body[0].client.name).toBe('Client A');
+    expect(jobsAsStaff.body[0].jobServices).toHaveLength(1);
+  });
+
+  it('lets assigned Staff clock in and out, but not on an unassigned or already-finished job', async () => {
+    const started = await request(server())
+      .post(`/jobs/${jobAId}/start`)
+      .set('Authorization', `Bearer ${staffAccessToken}`)
+      .expect(201);
+    expect(started.body.status).toBe('IN_PROGRESS');
+    expect(started.body.actualStart).toEqual(expect.any(String));
+
+    const completed = await request(server())
+      .post(`/jobs/${jobAId}/complete`)
+      .set('Authorization', `Bearer ${staffAccessToken}`)
+      .expect(201);
+    expect(completed.body.status).toBe('COMPLETED');
+    expect(completed.body.actualEnd).toEqual(expect.any(String));
+
+    await request(server())
+      .post(`/jobs/${jobAId}/start`)
+      .set('Authorization', `Bearer ${staffAccessToken}`)
+      .expect(400);
+
+    const otherJob = await request(server())
+      .post('/jobs')
+      .set('Authorization', `Bearer ${ownerAccessToken}`)
+      .send({ clientId: clientBId })
+      .expect(201);
+    await request(server())
+      .post(`/jobs/${otherJob.body.id}/start`)
+      .set('Authorization', `Bearer ${staffAccessToken}`)
+      .expect(404);
+  });
+
   it('never leaks passwordHash through the members list', async () => {
     const members = await request(server())
       .get('/organizations/me/members')
@@ -283,6 +323,11 @@ describe('business flows (e2e)', () => {
     // Client A has one job (jobAId); Client B's job must not appear.
     expect(jobsAsClient.body).toHaveLength(1);
     expect(jobsAsClient.body[0].id).toBe(jobAId);
+
+    await request(server())
+      .post(`/jobs/${jobAId}/start`)
+      .set('Authorization', `Bearer ${clientPortalAccessToken}`)
+      .expect(403);
   });
 
   it('creates an invoice, recomputes totals from line items, and pays it off', async () => {

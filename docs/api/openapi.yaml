@@ -697,6 +697,38 @@ paths:
         - jobs
       security:
         - bearer: []
+  /jobs/{id}/start:
+    post:
+      operationId: JobsController_start
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '201':
+          description: ''
+      tags:
+        - jobs
+      security:
+        - bearer: []
+  /jobs/{id}/complete:
+    post:
+      operationId: JobsController_complete
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '201':
+          description: ''
+      tags:
+        - jobs
+      security:
+        - bearer: []
   /jobs/{id}/assignments:
     post:
       operationId: JobsController_createAssignment
