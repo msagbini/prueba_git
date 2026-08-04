@@ -5,6 +5,24 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added — Fase 5: Expansión (Reportes y Analytics)
+
+- Five read-only report endpoints (`modules/reports`), gated by a new
+  `reports.read` permission (Owner/Admin only): `GET /reports/revenue`
+  (total + time-bucketed), `GET /reports/jobs-summary` (counts by
+  status), `GET /reports/staff-performance` (jobs completed + hours
+  worked per staff member), `GET /reports/top-clients` (highest-revenue
+  clients), and `GET /reports/outstanding-invoices` (current unpaid
+  balance, total and overdue). No new schema — every report reads
+  existing `Payment`/`Job`/`Invoice`/`StaffProfile` data.
+- `PATCH /jobs/:id` now accepts `actualStart`/`actualEnd` — these
+  existed in the schema since Fase 2 but had no endpoint to set them
+  until the staff-performance report needed them.
+- e2e coverage for all five reports against a real fixture, plus a 403
+  check for non-Owner/Admin callers.
+
+See `docs/technical-log/phase-5.md` for the full build log.
+
 ### Added — Fase 4: Monetización
 
 - Tiered plans (Free/Pro/Business): `Plan` (global reference data) and

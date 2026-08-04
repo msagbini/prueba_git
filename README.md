@@ -8,18 +8,23 @@ maintenance, landscaping and general field services.
 
 ## Status
 
-**Fase 4 — Monetización: complete**, awaiting approval to start Fase 5
-(Expansión). DOS now has tiered plans (Free/Pro/Business) with real
-usage-limit enforcement, and a real Stripe Checkout/webhook integration
-— unverified against Stripe's own servers pending real test credentials,
-but with every other code path (validation, config-missing handling,
-webhook signature verification) genuinely tested. The API's Fase 3
-business modules (clients, services, staff, jobs/scheduling, invoicing,
-payments) remain fully implemented — real CRUD, permission-scoped RBAC,
-row-level visibility (Staff/Client), and an audit trail — behind the same
+**Fase 5 — Expansión (Reportes y Analytics): complete**, awaiting
+approval to start Fase 6. DOS now has five operational/financial report
+endpoints (revenue, jobs by status, staff performance, top clients,
+outstanding invoices), Owner/Admin-only, built entirely on data the Fase
+3 business modules already write. Fase 4 (Monetización) remains in
+place: tiered plans (Free/Pro/Business) with real usage-limit
+enforcement, and a real Stripe Checkout/webhook integration — unverified
+against Stripe's own servers pending real test credentials, but with
+every other code path (validation, config-missing handling, webhook
+signature verification) genuinely tested. The API's Fase 3 business
+modules (clients, services, staff, jobs/scheduling, invoicing, payments)
+remain fully implemented — real CRUD, permission-scoped RBAC, row-level
+visibility (Staff/Client), and an audit trail — behind the same
 multi-tenant architecture built in Fase 2. The web and mobile apps are
-still routing/navigation scaffolds; real screens land in Fase 6/7. See
-[`docs/technical-log/phase-4.md`](docs/technical-log/phase-4.md) (and
+still routing/navigation scaffolds; real screens land in a later phase.
+See [`docs/technical-log/phase-5.md`](docs/technical-log/phase-5.md)
+(and [`phase-4.md`](docs/technical-log/phase-4.md),
 [`phase-3.md`](docs/technical-log/phase-3.md),
 [`phase-2.md`](docs/technical-log/phase-2.md) for prior phases) for the
 full log, and
