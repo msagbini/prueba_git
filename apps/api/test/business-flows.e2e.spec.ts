@@ -371,6 +371,23 @@ describe('business flows (e2e)', () => {
     expect(invoicesAsClient.body.items.map((i: { id: string }) => i.id)).toEqual([invoiceId]);
   });
 
+  it('renders the invoice as a real PDF', async () => {
+    const pdf = await request(server())
+      .get(`/invoices/${invoiceId}/pdf`)
+      .set('Authorization', `Bearer ${ownerAccessToken}`)
+      .expect(200);
+
+    expect(pdf.headers['content-type']).toBe('application/pdf');
+    expect(pdf.headers['content-disposition']).toContain('attachment');
+    const body = pdf.body as Buffer;
+    expect(body.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+
+    await request(server())
+      .get('/invoices/00000000-0000-0000-0000-000000000000/pdf')
+      .set('Authorization', `Bearer ${ownerAccessToken}`)
+      .expect(404);
+  });
+
   it('records every mutation above in the audit trail', async () => {
     const logs = await request(server())
       .get('/audit-logs')
@@ -415,6 +432,11 @@ describe('business flows (e2e)', () => {
 
     await request(server())
       .get(`/invoices/${invoiceId}`)
+      .set('Authorization', `Bearer ${otherAccessToken}`)
+      .expect(404);
+
+    await request(server())
+      .get(`/invoices/${invoiceId}/pdf`)
       .set('Authorization', `Bearer ${otherAccessToken}`)
       .expect(404);
   });

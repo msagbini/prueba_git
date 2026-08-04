@@ -32,6 +32,40 @@ export class ApiError extends Error {
 }
 
 /**
+ * Fetches a binary response (e.g. a generated PDF) and triggers a
+ * browser download, reusing the same auth/credentials handling as
+ * {@link apiFetch}. Kept separate from `apiFetch` rather than adding a
+ * `responseType` option to it — every other call site wants parsed
+ * JSON, this is the one exception, and object-URL cleanup only makes
+ * sense here.
+ * @param path the API path, relative to `VITE_API_URL`
+ * @param fallbackFileName used if the response has no `Content-Disposition` filename
+ * @throws ApiError if the response status is not ok
+ */
+export async function downloadFile(path: string, fallbackFileName: string): Promise<void> {
+  const headers = new Headers();
+  if (accessToken) {
+    headers.set('Authorization', `Bearer ${accessToken}`);
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, { headers, credentials: 'include' });
+  if (!response.ok) {
+    throw new ApiError(response.status, null);
+  }
+
+  const disposition = response.headers.get('Content-Disposition') ?? '';
+  const fileName = /filename="([^"]+)"/.exec(disposition)?.[1] ?? fallbackFileName;
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
  * Minimal typed fetch wrapper for the DOS API. Attaches the in-memory
  * access token and sends cookies (`credentials: 'include'`) so the
  * httpOnly refresh-token cookie is included — see

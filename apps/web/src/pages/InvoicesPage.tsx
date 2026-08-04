@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch, ApiError } from '../api/client';
+import { apiFetch, downloadFile, ApiError } from '../api/client';
 import { Button } from '../components/ui/Button';
 import { Field, SelectField } from '../components/ui/Field';
 import { Modal } from '../components/ui/Modal';
@@ -166,6 +166,14 @@ export function InvoicesPage(): JSX.Element {
     }
   };
 
+  const handleDownloadPdf = async (invoice: Invoice): Promise<void> => {
+    try {
+      await downloadFile(`/invoices/${invoice.id}/pdf`, `${invoice.invoiceNumber}.pdf`);
+    } catch {
+      setLoadError('Could not download this invoice as a PDF.');
+    }
+  };
+
   const handleRecordPayment = async (): Promise<void> => {
     if (!editing || !paymentForm.amount) return;
     setSubError(null);
@@ -243,13 +251,22 @@ export function InvoicesPage(): JSX.Element {
                     </span>
                   </td>
                   <td className="px-3 py-2 text-right">
-                    <Button
-                      variant="secondary"
-                      className="px-2 py-1 text-xs"
-                      onClick={() => openEdit(invoice)}
-                    >
-                      Open
-                    </Button>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="secondary"
+                        className="px-2 py-1 text-xs"
+                        onClick={() => handleDownloadPdf(invoice)}
+                      >
+                        PDF
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        className="px-2 py-1 text-xs"
+                        onClick={() => openEdit(invoice)}
+                      >
+                        Open
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -314,6 +331,15 @@ export function InvoicesPage(): JSX.Element {
       >
         {editing && (
           <div className="flex flex-col gap-5">
+            <div className="flex justify-end">
+              <Button
+                variant="secondary"
+                className="px-2 py-1 text-xs"
+                onClick={() => handleDownloadPdf(editing)}
+              >
+                Download PDF
+              </Button>
+            </div>
             <div className="flex items-center gap-2">
               <SelectField
                 label="Status"

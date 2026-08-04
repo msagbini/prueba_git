@@ -25,6 +25,11 @@ deliberately unbuilt (`docs/technical-log/phase-9.md` has the full log).
 - **Route-level code-splitting** (`apps/web`) via `React.lazy`: initial
   bundle down from 213.71 kB (64.04 kB gzip) to 173.89 kB (56.85 kB
   gzip), measured via `vite build`.
+- **Invoice PDF export**: `GET /invoices/:id/pdf` (`InvoicePdfService`,
+  `pdfkit`) renders a real, downloadable invoice PDF — organization,
+  client and billing address, line items, and totals. `apps/web`'s
+  Invoices page gained "PDF"/"Download PDF" buttons backed by a new
+  `downloadFile()` client helper.
 
 ### Added — Fase 9: Hardening y funcionalidad operativa
 

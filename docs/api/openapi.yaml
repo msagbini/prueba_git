@@ -1012,6 +1012,22 @@ paths:
         - invoices
       security:
         - bearer: []
+  /invoices/{id}/pdf:
+    get:
+      operationId: InvoicesController_downloadPdf
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - invoices
+      security:
+        - bearer: []
   /invoices/{id}/line-items:
     post:
       operationId: InvoicesController_createLineItem

@@ -254,8 +254,6 @@ listan aquí para que la brecha esté documentada, no oculta:
 - **Portal de cliente final**: el rol `Client` existe en el RBAC desde
   Fase 2 con visibilidad de sus propios jobs/facturas ya filtrada en el
   backend, pero no tiene ninguna pantalla, ni web ni mobile.
-- **Generación de PDF de facturas**: los datos están completos; no hay
-  forma de exportar o enviar un PDF a un cliente.
 - **Calendario/dispatch board**: `apps/web`'s Jobs page es una lista, no
   una vista de calendario/semana con arrastrar-y-soltar.
 - **Cámara en `apps/mobile`** para adjuntar fotos desde el flujo de
@@ -344,6 +342,50 @@ tenían página en `apps/web` — brecha documentada arriba, cerrada ahora:
   existente autenticado como ese usuario → acepta directo sin mostrar
   el formulario). Las 9 verificaciones live pasaron.
 
+### Funcionalidad — generación de PDF de facturas
+
+También listado arriba como brecha deliberada — los datos de una
+factura estaban completos desde Fase 3, pero no había forma de
+exportarla. Cerrado ahora:
+
+- `InvoicePdfService` (`apps/api`, `pdfkit`, sin dependencias nativas
+  ni navegador headless) renderiza una factura de una página: datos de
+  la organización, número/fechas/estado de la factura, datos del
+  cliente (nombre, contacto, email, teléfono) y su dirección de
+  facturación (`ClientAddress` con `label=BILLING`, si existe — nada
+  de esto es un campo nuevo, todo ya vivía en el schema desde Fase 2/3),
+  la tabla de line items, y subtotal/tax/total. No recalcula nada —
+  solo da formato a los totales que `InvoicesService.recomputeTotals()`
+  ya mantiene correctos.
+- `GET /invoices/:id/pdf` (`invoices.read`, misma visibilidad por fila
+  que el resto del módulo — un Client solo puede pedir el PDF de sus
+  propias facturas) sirve el PDF vía `StreamableFile`, mismo patrón que
+  la descarga de adjuntos de jobs (Fase 9).
+- `apps/web`: botón "PDF" en la fila de cada factura y botón
+  "Download PDF" dentro del modal de edición — un nuevo helper
+  `downloadFile()` en `api/client.ts` (paralelo a `apiFetch`, pero para
+  respuestas binarias: arma un blob, dispara la descarga del navegador,
+  libera el object URL) en vez de forzar el flujo JSON existente a
+  manejar bytes.
+- **Verificado en vivo, no solo con un e2e que aserte el content-type**:
+  se creó una organización, un cliente con dirección de facturación
+  real, y una factura con dos line items reales por HTTP contra la API
+  corriendo; se descargó el PDF resultante y se decodificaron sus
+  streams `FlateDecode` a mano (Python + zlib) para confirmar que el
+  texto renderizado coincide byte a byte con los datos reales: nombre
+  de la organización, número de factura, fechas, "Bill to" completo con
+  la dirección, cada línea de servicio con cantidad/precio/total, y
+  Subtotal/Tax/Total ($402.50, correcto). Además, con Playwright real
+  se click-eó el botón "PDF" en la lista y el botón "Download PDF" en
+  el modal, confirmando en ambos casos una descarga real con nombre
+  `INV-0001.pdf` y bytes que empiezan con la firma `%PDF-`. Cobertura
+  añadida a la suite e2e existente: PDF válido para el dueño de la
+  factura, 404 para un id inexistente y para una factura de otra
+  organización (aislamiento multi-tenant también en esta ruta).
+- `pnpm audit --prod` re-corrido tras añadir `pdfkit`: mismas 15
+  vulnerabilidades pre-existentes que ya estaban documentadas, ninguna
+  nueva introducida por la dependencia.
+
 ### Verificación de este addendum
 
 - `pnpm --filter web run build` / `lint` / `test` — verde.
@@ -352,10 +394,13 @@ tenían página en `apps/web` — brecha documentada arriba, cerrada ahora:
 - Migración de índices aplicada limpiamente contra Postgres local
   (`prisma migrate dev`), sin downtime porque son solo `CREATE INDEX`
   aditivos.
+- `docs/api/openapi.yaml` regenerado (`pnpm docs:api`) para incluir
+  `GET /invoices/:id/pdf`.
 
 **Fase 9 (incluyendo este addendum) completa.** Como en el cierre de
 Fase 8: no hay una fase siguiente definida en ningún documento del
-proyecto. La generación de PDF de facturas queda como el siguiente
-ítem identificado y explícitamente pendiente; el resto de la lista de
-brechas deliberadas sigue vigente. Cualquier dirección posterior
-necesita alcance definido por el stakeholder.
+proyecto. De la lista de brechas deliberadas, quedan: portal de
+cliente final, calendario/dispatch board, cámara en mobile,
+notificaciones más allá de auth, y las migraciones mayores de
+dependencias — sin cambios respecto a lo documentado arriba. Cualquier
+dirección posterior necesita alcance definido por el stakeholder.

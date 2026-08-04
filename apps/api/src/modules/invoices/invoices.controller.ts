@@ -1,11 +1,24 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Res,
+  StreamableFile,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import type { AuthenticatedUser } from '../../common/types/authenticated-request';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { InvoicesService } from './invoices.service';
+import { InvoicePdfService } from './invoice-pdf.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceDto } from './dto/update-invoice.dto';
 import { CreateInvoiceLineItemDto } from './dto/create-invoice-line-item.dto';
@@ -19,8 +32,12 @@ export class InvoicesController {
   /**
    * Constructs the controller around the service implementing its routes.
    * @param invoicesService implements this controller's routes
+   * @param invoicePdfService renders an invoice as a PDF for the `.../pdf` route
    */
-  constructor(private readonly invoicesService: InvoicesService) {}
+  constructor(
+    private readonly invoicesService: InvoicesService,
+    private readonly invoicePdfService: InvoicePdfService,
+  ) {}
 
   /**
    * Lists records.
@@ -59,6 +76,32 @@ export class InvoicesController {
   @Get(':id')
   findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.invoicesService.findOne({ membershipId: user.membershipId, role: user.role }, id);
+  }
+
+  /**
+   * Renders an invoice as a PDF.
+   * @param user the authenticated caller
+   * @param id the invoice to render
+   * @param res used to set the response's Content-Type/Content-Disposition
+   * @returns a stream of the generated PDF's bytes
+   */
+  @RequirePermissions('invoices.read')
+  @Get(':id/pdf')
+  async downloadPdf(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const data = await this.invoicesService.getPdfData(
+      { membershipId: user.membershipId, role: user.role },
+      id,
+    );
+    const pdf = this.invoicePdfService.generate(data);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${data.invoice.invoiceNumber}.pdf"`,
+    });
+    return new StreamableFile(pdf);
   }
 
   /**

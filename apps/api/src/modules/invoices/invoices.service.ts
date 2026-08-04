@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, RoleCode, type Invoice, type InvoiceLineItem } from '@prisma/client';
+import { AddressLabel, Prisma, RoleCode, type Invoice, type InvoiceLineItem } from '@prisma/client';
+import type { InvoicePdfData } from './invoice-pdf.service';
 import { toDateOrUndefined } from '../../common/to-date';
 import type { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { paginate, type PaginatedResult } from '../../common/pagination';
@@ -105,6 +106,30 @@ export class InvoicesService {
       where: { invoiceId: id },
     });
     return { ...invoice, lineItems };
+  }
+
+  /**
+   * Fetches everything `InvoicePdfService` needs to render an invoice —
+   * the invoice, its line items, its client, the client's billing
+   * address (if any), and the organization — in one place, so the
+   * controller doesn't have to know which tables back a PDF.
+   * @param caller the authenticated caller, for row-level visibility
+   * @param id the invoice to fetch
+   * @returns the data `InvoicePdfService.generate()` renders
+   */
+  async getPdfData(caller: InvoiceCaller, id: string): Promise<InvoicePdfData> {
+    const invoice = await this.findOrThrow(caller, id);
+    const [lineItems, client, organization, billingAddress] = await Promise.all([
+      this.tenantContext.client.invoiceLineItem.findMany({ where: { invoiceId: id } }),
+      this.tenantContext.client.client.findFirstOrThrow({ where: { id: invoice.clientId } }),
+      this.tenantContext.client.organization.findFirstOrThrow({
+        where: { id: invoice.organizationId },
+      }),
+      this.tenantContext.client.clientAddress.findFirst({
+        where: { clientId: invoice.clientId, label: AddressLabel.BILLING },
+      }),
+    ]);
+    return { invoice, lineItems, client, organization, billingAddress };
   }
 
   /**
