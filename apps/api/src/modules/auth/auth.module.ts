@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import type { EnvConfig } from '../../config/env.validation';
 import { BillingModule } from '../billing/billing.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -12,6 +14,7 @@ import { PermissionsGuard } from './guards/permissions.guard';
 import { OptionalJwtAuthGuard } from './guards/optional-jwt-auth.guard';
 import { EmailService } from './email/email.service';
 import { ConsoleEmailService } from './email/console-email.service';
+import { SmtpEmailService } from './email/smtp-email.service';
 
 /**
  * Authentication, session and invitation module (see
@@ -38,7 +41,21 @@ import { ConsoleEmailService } from './email/console-email.service';
     RolesGuard,
     PermissionsGuard,
     OptionalJwtAuthGuard,
-    { provide: EmailService, useClass: ConsoleEmailService },
+    SmtpEmailService,
+    {
+      provide: EmailService,
+      // SMTP_HOST unset (the case in every environment this project has
+      // run in so far — no real SMTP credentials exist here) falls back
+      // to logging instead of crashing the app over an unconfigured
+      // optional feature, matching BillingService's Stripe pattern.
+      useFactory: (
+        config: ConfigService<EnvConfig, true>,
+        smtp: SmtpEmailService,
+        stub: ConsoleEmailService,
+      ) => (config.get('SMTP_HOST', { infer: true }) ? smtp : stub),
+      inject: [ConfigService, SmtpEmailService, ConsoleEmailService],
+    },
+    ConsoleEmailService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
   exports: [RolesGuard, PermissionsGuard],

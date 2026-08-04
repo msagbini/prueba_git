@@ -31,6 +31,22 @@ export const envSchema = z.object({
   STRIPE_CHECKOUT_SUCCESS_URL: z.string().default('http://localhost:5173/billing?checkout=success'),
   /** Where Stripe Checkout redirects if the customer cancels out of the flow. */
   STRIPE_CHECKOUT_CANCEL_URL: z.string().default('http://localhost:5173/billing?checkout=canceled'),
+
+  // Transactional email (Fase 9) — all optional, like Stripe above. Without
+  // SMTP_HOST, AuthModule binds ConsoleEmailService (logs instead of
+  // sending) rather than crashing the app over an unconfigured optional
+  // feature. No real SMTP credentials exist in this project — see
+  // docs/technical-log/phase-9.md for what is/isn't live-verified.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  /** Whether to use implicit TLS (port 465) vs. STARTTLS (587/25, the default). */
+  SMTP_SECURE: z.coerce.boolean().default(false),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  /** The "From" address on outgoing mail — must be a domain the SMTP account is authorized to send as. */
+  SMTP_FROM: z.string().default('DOS <no-reply@dos.example.com>'),
+  /** Base URL of the web app, used to build links embedded in emails (verify/reset/invitation). */
+  WEB_APP_URL: z.string().default('http://localhost:5173'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
