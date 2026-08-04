@@ -8,6 +8,7 @@ import { ClientsPage } from './pages/ClientsPage';
 import { ServicesPage } from './pages/ServicesPage';
 import { StaffPage } from './pages/StaffPage';
 import { JobsPage } from './pages/JobsPage';
+import { InvoicesPage } from './pages/InvoicesPage';
 
 /**
  * Gates the authenticated routes: redirects to /login once session
@@ -48,6 +49,7 @@ function AppRoutes(): JSX.Element {
         <Route path="/services" element={<ServicesPage />} />
         <Route path="/staff" element={<StaffPage />} />
         <Route path="/jobs" element={<JobsPage />} />
+        <Route path="/invoices" element={<InvoicesPage />} />
         <Route path="/billing" element={<BillingPage />} />
       </Route>
     </Routes>

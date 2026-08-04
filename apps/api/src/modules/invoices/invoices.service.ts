@@ -88,13 +88,23 @@ export class InvoicesService {
   }
 
   /**
-   * Fetches a single record.
+   * Fetches a single record, with its line items — there was previously
+   * no way to read an invoice's line items at all (only `POST .../line-
+   * items` existed), a real gap surfaced building the web invoices page
+   * (Fase 9).
    * @param caller the authenticated caller, for row-level visibility
    * @param id the invoice to fetch
-   * @returns the matching record
+   * @returns the matching record, with its line items
    */
-  async findOne(caller: InvoiceCaller, id: string): Promise<Invoice> {
-    return this.findOrThrow(caller, id);
+  async findOne(
+    caller: InvoiceCaller,
+    id: string,
+  ): Promise<Invoice & { lineItems: InvoiceLineItem[] }> {
+    const invoice = await this.findOrThrow(caller, id);
+    const lineItems = await this.tenantContext.client.invoiceLineItem.findMany({
+      where: { invoiceId: id },
+    });
+    return { ...invoice, lineItems };
   }
 
   /**

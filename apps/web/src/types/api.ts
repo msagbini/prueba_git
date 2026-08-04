@@ -119,6 +119,45 @@ export interface JobAssignment {
   membership: { id: string; user: SafeUser };
 }
 
+export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'VOID';
+
+export interface InvoiceLineItem {
+  id: string;
+  description: string;
+  quantity: string;
+  unitPrice: string;
+  lineTotal: string;
+}
+
+export interface Invoice {
+  id: string;
+  clientId: string;
+  invoiceNumber: string;
+  status: InvoiceStatus;
+  issueDate: string;
+  dueDate: string;
+  subtotal: string;
+  taxAmount: string;
+  total: string;
+  currency: string;
+}
+
+export interface InvoiceWithLineItems extends Invoice {
+  lineItems: InvoiceLineItem[];
+}
+
+export type PaymentMethod = 'CASH' | 'CHECK' | 'CARD' | 'BANK_TRANSFER' | 'OTHER';
+
+export interface Payment {
+  id: string;
+  invoiceId: string;
+  amount: string;
+  method: PaymentMethod;
+  status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'REFUNDED';
+  paidAt: string | null;
+  referenceNumber: string | null;
+}
+
 export interface Job {
   id: string;
   clientId: string;
