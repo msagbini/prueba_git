@@ -32,6 +32,29 @@ export class ApiError extends Error {
 }
 
 /**
+ * Reads the `role` claim out of an access token's payload, without
+ * verifying the signature — this is display-only (which nav links to
+ * show), never an authorization decision, so there's nothing to gain
+ * from a real JWT library here: every route this role gates is also
+ * enforced server-side by `PermissionsGuard` against the same token.
+ * @param token the access token issued by `POST /auth/login` et al.
+ * @returns the token's `role` claim, or null if the token can't be parsed
+ */
+export function decodeJwtRole(token: string): string | null {
+  try {
+    const payloadSegment = token.split('.')[1];
+    if (!payloadSegment) return null;
+    const base64 = payloadSegment.replace(/-/g, '+').replace(/_/g, '/');
+    const payload: unknown = JSON.parse(atob(base64));
+    if (typeof payload !== 'object' || payload === null || !('role' in payload)) return null;
+    const role = (payload as { role: unknown }).role;
+    return typeof role === 'string' ? role : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Fetches a binary response (e.g. a generated PDF) and triggers a
  * browser download, reusing the same auth/credentials handling as
  * {@link apiFetch}. Kept separate from `apiFetch` rather than adding a

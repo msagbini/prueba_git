@@ -251,14 +251,14 @@ real y uploads multipart reales, no mocks.
 Ninguno de estos está pedido en ningún documento del proyecto — se
 listan aquí para que la brecha esté documentada, no oculta:
 
-- **Portal de cliente final**: el rol `Client` existe en el RBAC desde
-  Fase 2 con visibilidad de sus propios jobs/facturas ya filtrada en el
-  backend, pero no tiene ninguna pantalla, ni web ni mobile.
 - **Calendario/dispatch board**: `apps/web`'s Jobs page es una lista, no
   una vista de calendario/semana con arrastrar-y-soltar.
 - **Cámara en `apps/mobile`** para adjuntar fotos desde el flujo de
   clock-out — bloqueado en tener un dispositivo/simulador real para
   verificarlo, mismo gap documentado desde Fase 6.
+- **Portal de cliente en `apps/mobile`**: el portal de cliente de esta
+  sección solo cubre `apps/web` — `apps/mobile` sigue siendo
+  Staff-only (ver Fase 6).
 - **Notificaciones más allá de auth** (recordatorio de cita, job
   asignado) — no hay módulo de notificaciones.
 - **Migraciones mayores de dependencias** (NestJS 10→11, react-router
@@ -386,6 +386,61 @@ exportarla. Cerrado ahora:
   vulnerabilidades pre-existentes que ya estaban documentadas, ninguna
   nueva introducida por la dependencia.
 
+### Funcionalidad — portal de cliente final
+
+El tercer ítem de la lista de brechas deliberadas. El rol `Client`
+existe en el RBAC desde Fase 2 con visibilidad ya filtrada en el
+backend (`jobs.read`/`invoices.read`/`payments.read`, siempre
+restringido a sus propios registros vía `visibilityFilter()` en cada
+servicio), pero no tenía ninguna pantalla. Cerrado ahora:
+
+- `decodeJwtRole()` (`apps/web/src/api/client.ts`) lee el claim `role`
+  del access token sin verificar la firma — es solo para decidir qué
+  nav mostrar, nunca una decisión de autorización (eso lo sigue
+  haciendo `PermissionsGuard` en la API contra el mismo token). Nuevo
+  en `AuthContext`: `role` en el contexto, recalculado en cada
+  `login()`/restauración de sesión.
+- Al construir esto se encontró un bug real y no relacionado en
+  `AcceptInvitationPage` (Fase 9.1, addendum anterior): esa página
+  llamaba a `setAccessToken()` directamente en vez de pasar por
+  `AuthContext`, así que el estado de React de `status` nunca pasaba a
+  `authenticated` — `RequireAuth` rebotaba al usuario recién aceptado
+  de vuelta a `/login` a pesar de que el backend sí había emitido una
+  sesión válida. Se agregó `AuthContext.setSession()` (adopta un
+  access token emitido fuera de `login()`, recalculando `role` también)
+  y `AcceptInvitationPage` ahora lo usa en las dos ramas. Confirmado en
+  vivo que antes del fix la URL rebotaba a `/login` ~1.5s después de
+  "llegar" al dashboard, y que después del fix se queda.
+- `AppLayout`/`DashboardPage` ahora son conscientes del rol: un
+  caller `CLIENT` ve un nav de dos ítems ("My jobs"/"My invoices") en
+  vez del nav operativo completo — no tiene permiso para ninguno de
+  esos módulos (`clients.read`/`services.read`/`staff.read`/billing no
+  están en su lista de permisos, ver `prisma/seed.ts`), así que
+  mostrárselos solo produciría errores 403 silenciosos.
+- `MyJobsPage` (`/my-jobs`) y `MyInvoicesPage` (`/my-invoices`):
+  contrapartes de solo lectura de `JobsPage`/`InvoicesPage` — mismos
+  endpoints (`GET /jobs`, `GET /invoices`, `GET /invoices/:id`), sin
+  formularios de creación/edición/asignación (el caller no tiene
+  `*.manage`). `MyInvoicesPage` reutiliza el botón de descarga de PDF
+  de Fase 9.1 y un modal de "ver" con line items y pagos, ambos de
+  solo lectura.
+- **Verificado en vivo de punta a punta**: se creó una organización, un
+  cliente con dirección de facturación, un job y una factura reales
+  por HTTP, y se invitó ese email como rol `Client` ligado a ese
+  registro de cliente (`clientId` en la invitación). Con Playwright
+  real se aceptó la invitación como cuenta nueva, se confirmó que el
+  dashboard y el nav muestran las vistas de cliente (no las
+  operativas), que `/my-jobs` y `/my-invoices` muestran exactamente el
+  job/factura de ese cliente con los datos reales (incluido el total
+  de $225), que la descarga de PDF y el modal de "ver" funcionan, y
+  que navegar directamente a `/clients` (una URL que un Client no
+  debería usar) falla con un mensaje de error en vez de romper la
+  página. Por separado, se verificó que la rama "ya autenticado" de
+  `AcceptInvitationPage` (aceptar una invitación a una segunda
+  organización estando logueado) sigue funcionando tras el fix de
+  `setSession()`, y que el nav cambia correctamente al set operativo
+  al aceptar como Staff en esa segunda organización.
+
 ### Verificación de este addendum
 
 - `pnpm --filter web run build` / `lint` / `test` — verde.
@@ -396,11 +451,15 @@ exportarla. Cerrado ahora:
   aditivos.
 - `docs/api/openapi.yaml` regenerado (`pnpm docs:api`) para incluir
   `GET /invoices/:id/pdf`.
+- Tests nuevos: `decodeJwtRole()` (bien formado, sin claim `role`,
+  malformado) y `AuthContext` (`role` reflejando el JWT tras
+  login/restauración de sesión, y `setSession()`) — 14/14 tests de
+  `apps/web` verdes.
 
 **Fase 9 (incluyendo este addendum) completa.** Como en el cierre de
 Fase 8: no hay una fase siguiente definida en ningún documento del
 proyecto. De la lista de brechas deliberadas, quedan: portal de
-cliente final, calendario/dispatch board, cámara en mobile,
+cliente en `apps/mobile`, calendario/dispatch board, cámara en mobile,
 notificaciones más allá de auth, y las migraciones mayores de
 dependencias — sin cambios respecto a lo documentado arriba. Cualquier
 dirección posterior necesita alcance definido por el stakeholder.

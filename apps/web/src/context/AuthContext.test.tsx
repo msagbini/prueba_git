@@ -1,14 +1,30 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider, useAuth } from './AuthContext';
 
 /**
- * Renders the current auth status as text, for assertions.
- * @returns the status text element
+ * Builds a syntactically valid JWT with the given payload — signature is
+ * irrelevant, `AuthContext` never verifies it (see `decodeJwtRole`).
+ * @param payload the claims to encode
+ * @returns a three-segment `header.payload.signature` string
+ */
+function fakeJwt(payload: Record<string, unknown>): string {
+  const base64url = (obj: object): string =>
+    btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `${base64url({ alg: 'HS256' })}.${base64url(payload)}.signature`;
+}
+
+/**
+ * Renders the current auth status and role as text, for assertions.
+ * @returns the status/role text element
  */
 function StatusProbe(): JSX.Element {
-  const { status } = useAuth();
-  return <span>status:{status}</span>;
+  const { status, role } = useAuth();
+  return (
+    <span>
+      status:{status} role:{role ?? 'none'}
+    </span>
+  );
 }
 
 describe('AuthProvider', () => {
@@ -16,9 +32,10 @@ describe('AuthProvider', () => {
     vi.restoreAllMocks();
   });
 
-  it('restores an authenticated session when the refresh cookie is valid', async () => {
+  it('restores an authenticated session when the refresh cookie is valid, decoding role from the token', async () => {
+    const accessToken = fakeJwt({ sub: 'u1', role: 'CLIENT' });
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ accessToken: 'a', refreshToken: 'b' }), { status: 200 }),
+      new Response(JSON.stringify({ accessToken, refreshToken: 'b' }), { status: 200 }),
     );
 
     render(
@@ -27,8 +44,10 @@ describe('AuthProvider', () => {
       </AuthProvider>,
     );
 
-    expect(screen.getByText('status:loading')).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText('status:authenticated')).toBeInTheDocument());
+    expect(screen.getByText('status:loading role:none')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByText('status:authenticated role:CLIENT')).toBeInTheDocument(),
+    );
   });
 
   it('falls back to unauthenticated when there is no valid session to restore', async () => {
@@ -42,6 +61,38 @@ describe('AuthProvider', () => {
       </AuthProvider>,
     );
 
-    await waitFor(() => expect(screen.getByText('status:unauthenticated')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText('status:unauthenticated role:none')).toBeInTheDocument(),
+    );
+  });
+
+  it('setSession() adopts a session issued outside login(), e.g. from accepting an invitation', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ message: 'No refresh token provided.' }), { status: 400 }),
+    );
+
+    function SetSessionProbe(): JSX.Element {
+      const { setSession } = useAuth();
+      return (
+        <button onClick={() => setSession(fakeJwt({ sub: 'u2', role: 'OWNER' }))}>adopt</button>
+      );
+    }
+
+    render(
+      <AuthProvider>
+        <StatusProbe />
+        <SetSessionProbe />
+      </AuthProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText('status:unauthenticated role:none')).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'adopt' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('status:authenticated role:OWNER')).toBeInTheDocument(),
+    );
   });
 });

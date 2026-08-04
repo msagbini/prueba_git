@@ -1,5 +1,32 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiFetch, ApiError, setAccessToken } from './client';
+import { apiFetch, decodeJwtRole, ApiError, setAccessToken } from './client';
+
+/**
+ * Builds a syntactically valid JWT with the given payload — signature is
+ * irrelevant since {@link decodeJwtRole} never verifies it.
+ * @param payload the claims to encode
+ * @returns a three-segment `header.payload.signature` string
+ */
+function fakeJwt(payload: Record<string, unknown>): string {
+  const base64url = (obj: object): string =>
+    btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `${base64url({ alg: 'HS256' })}.${base64url(payload)}.signature`;
+}
+
+describe('decodeJwtRole', () => {
+  it('reads the role claim out of a well-formed token', () => {
+    expect(decodeJwtRole(fakeJwt({ sub: 'u1', role: 'CLIENT' }))).toBe('CLIENT');
+  });
+
+  it('returns null for a token missing the role claim', () => {
+    expect(decodeJwtRole(fakeJwt({ sub: 'u1' }))).toBeNull();
+  });
+
+  it('returns null for a malformed token instead of throwing', () => {
+    expect(decodeJwtRole('not-a-jwt')).toBeNull();
+    expect(decodeJwtRole('')).toBeNull();
+  });
+});
 
 describe('apiFetch', () => {
   afterEach(() => {

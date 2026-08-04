@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { apiFetch, setAccessToken } from '../api/client';
+import { apiFetch, decodeJwtRole, setAccessToken } from '../api/client';
 
 interface LoginTokens {
   accessToken: string;
@@ -20,8 +20,20 @@ type AuthStatus = 'loading' | 'unauthenticated' | 'authenticated';
 interface AuthContextValue {
   status: AuthStatus;
   isAuthenticated: boolean;
+  /** The caller's role in their active organization (e.g. "CLIENT"), or null before a session exists. */
+  role: string | null;
   login: (email: string, password: string) => Promise<LoginResponse>;
   logout: () => Promise<void>;
+  /**
+   * Adopts a session whose access token was issued outside `login()` —
+   * currently only `AcceptInvitationPage`, whose
+   * `POST /invitations/:token/accept` returns tokens directly. Without
+   * this, that page's own `setAccessToken` call (in `api/client.ts`)
+   * would leave this context's `status` stuck on `unauthenticated`, and
+   * `RequireAuth` would bounce the caller straight back to /login.
+   * @param accessToken the freshly issued access token
+   */
+  setSession: (accessToken: string) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -42,11 +54,13 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
  */
 export function AuthProvider({ children }: { children: ReactNode }): JSX.Element {
   const [status, setStatus] = useState<AuthStatus>('loading');
+  const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<LoginTokens>('/auth/refresh', { method: 'POST', body: JSON.stringify({}) })
       .then((tokens) => {
         setAccessToken(tokens.accessToken);
+        setRole(decodeJwtRole(tokens.accessToken));
         setStatus('authenticated');
       })
       .catch(() => {
@@ -61,6 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     });
     if (!result.requiresOrganizationSelection) {
       setAccessToken(result.tokens.accessToken);
+      setRole(decodeJwtRole(result.tokens.accessToken));
       setStatus('authenticated');
     }
     return result;
@@ -73,12 +88,26 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
       // Ignore — the local session is cleared regardless.
     }
     setAccessToken(null);
+    setRole(null);
     setStatus('unauthenticated');
+  };
+
+  const setSession = (accessToken: string): void => {
+    setAccessToken(accessToken);
+    setRole(decodeJwtRole(accessToken));
+    setStatus('authenticated');
   };
 
   return (
     <AuthContext.Provider
-      value={{ status, isAuthenticated: status === 'authenticated', login, logout }}
+      value={{
+        status,
+        isAuthenticated: status === 'authenticated',
+        role,
+        login,
+        logout,
+        setSession,
+      }}
     >
       {children}
     </AuthContext.Provider>

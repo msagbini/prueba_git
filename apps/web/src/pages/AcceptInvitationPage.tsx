@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { apiFetch, ApiError, setAccessToken } from '../api/client';
+import { apiFetch, ApiError } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { AuthCard } from '../components/ui/AuthCard';
 import { Button } from '../components/ui/Button';
@@ -20,7 +20,7 @@ import type { InvitationPreview } from '../types/api';
 export function AcceptInvitationPage(): JSX.Element {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, setSession } = useAuth();
 
   const [preview, setPreview] = useState<InvitationPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -46,7 +46,7 @@ export function AcceptInvitationPage(): JSX.Element {
         method: 'POST',
         body: JSON.stringify(body),
       });
-      setAccessToken(tokens.accessToken);
+      setSession(tokens.accessToken);
       navigate('/');
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {

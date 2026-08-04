@@ -30,6 +30,15 @@ deliberately unbuilt (`docs/technical-log/phase-9.md` has the full log).
   client and billing address, line items, and totals. `apps/web`'s
   Invoices page gained "PDF"/"Download PDF" buttons backed by a new
   `downloadFile()` client helper.
+- **Client portal** (`apps/web`): the `Client` role has held RBAC
+  permissions and row-level visibility onto its own jobs/invoices/
+  payments since Fase 2, with no UI until now. Role-aware nav/dashboard
+  (decoded from the access token's `role` claim) plus two new
+  read-only pages, `MyJobsPage`/`MyInvoicesPage`, with PDF download.
+  Along the way, fixed a real bug in `AcceptInvitationPage`: it set the
+  access token without updating `AuthContext`'s React state, so
+  `RequireAuth` bounced a freshly-accepted user straight back to
+  `/login`.
 
 ### Added — Fase 9: Hardening y funcionalidad operativa
 

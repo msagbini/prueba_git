@@ -24,6 +24,13 @@ const JobsPage = lazy(() => import('./pages/JobsPage').then((m) => ({ default: m
 const InvoicesPage = lazy(() =>
   import('./pages/InvoicesPage').then((m) => ({ default: m.InvoicesPage })),
 );
+// The Client-role portal — only a Client caller ever navigates here.
+const MyJobsPage = lazy(() =>
+  import('./pages/MyJobsPage').then((m) => ({ default: m.MyJobsPage })),
+);
+const MyInvoicesPage = lazy(() =>
+  import('./pages/MyInvoicesPage').then((m) => ({ default: m.MyInvoicesPage })),
+);
 
 // The unauthenticated email-link pages (forgot/reset password, verify
 // email, accept invitation) — like the operational pages, only a small
@@ -90,6 +97,8 @@ function AppRoutes(): JSX.Element {
           <Route path="/jobs" element={<JobsPage />} />
           <Route path="/invoices" element={<InvoicesPage />} />
           <Route path="/billing" element={<BillingPage />} />
+          <Route path="/my-jobs" element={<MyJobsPage />} />
+          <Route path="/my-invoices" element={<MyInvoicesPage />} />
         </Route>
       </Routes>
     </Suspense>
