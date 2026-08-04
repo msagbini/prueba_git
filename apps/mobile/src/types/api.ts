@@ -117,3 +117,16 @@ export interface Payment {
   paidAt: string | null;
   referenceNumber: string | null;
 }
+
+export type NotificationType = 'JOB_ASSIGNED' | 'JOB_REMINDER';
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  entityType: string | null;
+  entityId: string | null;
+  readAt: string | null;
+  createdAt: string;
+}

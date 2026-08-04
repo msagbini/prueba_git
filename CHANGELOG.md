@@ -59,7 +59,9 @@ deliberately unbuilt (`docs/technical-log/phase-9.md` has the full log).
   email/push delivery. `GET /notifications`, `GET /notifications/
   unread-count`, `POST /notifications/:id/read`, all scoped to the
   caller's own notifications. `apps/web` gets a `NotificationBell` in
-  the nav bar (unread badge, dropdown, mark-as-read).
+  the nav bar (unread badge, dropdown, mark-as-read); `apps/mobile`
+  gets a matching `NotificationsButton` (badge, header, both the Staff
+  and Client stacks) and a `NotificationsScreen`.
 
 ### Added — Fase 9: Hardening y funcionalidad operativa
 

@@ -9,6 +9,9 @@ based on the signed-in caller's `role`, decoded from the access token):
   client/address/services, and clock in/out.
 - **Client** (Fase 9.1): read-only — your own jobs and invoices.
 
+Both stacks' home screen header has a notifications bell (unread-count
+badge, polled) next to Sign out, opening `NotificationsScreen` (Fase 9.1).
+
 ## Getting started
 
 This app needs native toolchains this container doesn't have (Android SDK /
@@ -50,6 +53,7 @@ src/
     MyJobsScreen.tsx                Client: the caller's own jobs, read-only
     MyInvoicesScreen.tsx            Client: the caller's own invoices, read-only
     MyInvoiceDetailScreen.tsx       Client: one invoice's line items + payments
+    NotificationsScreen.tsx         Both: the caller's own notifications, tap to mark read
   types/
     api.ts                         Hand-written types for the API responses this app consumes
     globals.d.ts                    Ambient atob/btoa (RN core globals since 0.72; no DOM lib to declare them)
@@ -95,6 +99,12 @@ PDF" action (unlike `apps/web`'s client portal, which has one against
 `GET /invoices/:id/pdf`) — that needs a file-saving library this bare
 RN app doesn't have wired up, and there's no way to verify one links
 correctly without a device.
+
+The notifications bell/screen (Fase 9.1) has the same limitation too:
+`tsc`/`eslint`/`jest`/Metro-bundle pass, and `GET /notifications`/`GET
+/notifications/unread-count`/`POST /notifications/:id/read` were
+verified live against the real API while building the equivalent
+`apps/web` feature — but, again, never rendered on a device.
 
 ## Scripts
 

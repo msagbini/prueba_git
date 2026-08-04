@@ -610,6 +610,40 @@ createAssignment()` lo llama justo después de crear el
   usuarios → marcar como leída, agregado al test de asignación de
   Staff ya existente.
 
+### Notificaciones en `apps/mobile`
+
+Espejo del trabajo anterior en `apps/web` — mismo patrón que el
+portal de cliente en mobile (más arriba en este addendum): llevar una
+funcionalidad ya construida y verificada de un lado del monorepo al
+otro, no una decisión de alcance nueva (esa ya se tomó, y se
+documentó, en la sección de arriba).
+
+- `NotificationsScreen` (alcanzable tanto desde `AppStack` de Staff
+  como desde `ClientStack` de Client — una notificación no es
+  específica de un rol): lista, tap para marcar como leída, mismo
+  patrón de `FlatList` + `useFocusEffect` que el resto de las
+  pantallas de esta app.
+- `NotificationsButton`, un botón nuevo en el header de la pantalla
+  de inicio de ambos stacks, junto a "Sign out" (`HeaderActions` los
+  agrupa — `headerRight` de React Navigation solo acepta un slot).
+  Badge con el conteo de no-leídas, poll cada 30s, mismo intervalo
+  que `apps/web`'s `NotificationBell`. Sin librería de íconos (esta
+  app no tiene ninguna instalada) — el emoji 🔔 como `Text`, mismo
+  approach sin-íconos que el resto de la UI de mobile.
+- Tipos `NotificationType`/`AppNotification` agregados a
+  `types/api.ts` (con ese nombre, no `Notification`, para no
+  confundir con cualquier tipo global futuro del mismo nombre —
+  mismo cuidado que se tomó en `apps/web`).
+
+**Verificación, misma limitación de siempre para esta app**: sin
+Android SDK/Xcode en este contenedor, no se pudo renderizar en un
+dispositivo o simulador real. Lo que sí se verificó: `tsc --noEmit`,
+`eslint`, `jest` (11/11), y el bundle de Metro para Android — y, del
+lado del backend real que esta pantalla consume, `GET /notifications`/
+`GET /notifications/unread-count`/`POST /notifications/:id/read` ya
+se habían verificado en vivo contra la API real al construir el
+`NotificationBell` de `apps/web` más arriba en este documento.
+
 ### Verificación de este addendum
 
 - `pnpm --filter web run build` / `lint` / `test` — verde.
