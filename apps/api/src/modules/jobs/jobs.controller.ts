@@ -21,7 +21,6 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import type { AuthenticatedUser } from '../../common/types/authenticated-request';
-import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { JobsService } from './jobs.service';
 import { JobAttachmentsService } from './job-attachments.service';
 import { jobAttachmentMulterOptions } from './job-attachment-storage';
@@ -29,6 +28,7 @@ import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
 import { CreateJobAssignmentDto } from './dto/create-job-assignment.dto';
 import { CreateJobServiceDto } from './dto/create-job-service.dto';
+import { ListJobsQueryDto } from './dto/list-jobs-query.dto';
 
 /** Scheduled jobs, assignments and billed services. */
 @ApiTags('jobs')
@@ -49,13 +49,13 @@ export class JobsController {
   /**
    * Lists records.
    * @param user the authenticated caller
-   * @param pagination the requested page/pageSize
+   * @param query the requested page/pageSize and optional scheduled-date window
    * @returns a page of jobs visible to the caller
    */
   @RequirePermissions('jobs.read')
   @Get()
-  list(@CurrentUser() user: AuthenticatedUser, @Query() pagination: PaginationQueryDto) {
-    return this.jobsService.list({ membershipId: user.membershipId, role: user.role }, pagination);
+  list(@CurrentUser() user: AuthenticatedUser, @Query() query: ListJobsQueryDto) {
+    return this.jobsService.list({ membershipId: user.membershipId, role: user.role }, query);
   }
 
   /**

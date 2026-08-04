@@ -667,6 +667,18 @@ paths:
             maximum: 100
             default: 25
             type: number
+        - name: scheduledFrom
+          required: false
+          in: query
+          description: Only jobs scheduled at or after this instant, ISO 8601.
+          schema:
+            type: string
+        - name: scheduledTo
+          required: false
+          in: query
+          description: Only jobs scheduled before this instant, ISO 8601.
+          schema:
+            type: string
       responses:
         '200':
           description: ''

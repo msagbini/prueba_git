@@ -39,6 +39,11 @@ deliberately unbuilt (`docs/technical-log/phase-9.md` has the full log).
   access token without updating `AuthContext`'s React state, so
   `RequireAuth` bounced a freshly-accepted user straight back to
   `/login`.
+- **Dispatch calendar**: `JobsPage` gains a List/Calendar toggle — a
+  week view with native HTML5 drag-and-drop rescheduling (drop a job
+  on another day, same `PATCH /jobs/:id` the edit form already uses).
+  `GET /jobs` gained optional `scheduledFrom`/`scheduledTo` query
+  params to support fetching one week at a time.
 
 ### Added — Fase 9: Hardening y funcionalidad operativa
 

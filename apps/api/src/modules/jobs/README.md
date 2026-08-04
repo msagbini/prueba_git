@@ -29,6 +29,13 @@ Fase 6 for the mobile app's jobs list/detail screens; `assignments` in
 Fase 9, so the web dispatch UI could show who's already on a job instead
 of "assign staff" being write-only.
 
+`GET /jobs` also accepts optional `scheduledFrom`/`scheduledTo`
+(ISO 8601, both filter on `scheduledStart`) alongside `page`/`pageSize` —
+added for the web dispatch calendar (Fase 9.1), which needs one week of
+jobs at a time rather than a `page`/`pageSize` slice ordered across the
+whole organization. Jobs with no `scheduledStart` are excluded from any
+window filter (there's no day to place them on).
+
 `GET /jobs` is paginated (`?page=&pageSize=`, capped at 100 — see
 `common/pagination.ts`) since Fase 9; the response is
 `{ items, page, pageSize, total, totalPages }`, not a bare array.

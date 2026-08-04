@@ -251,8 +251,6 @@ real y uploads multipart reales, no mocks.
 Ninguno de estos está pedido en ningún documento del proyecto — se
 listan aquí para que la brecha esté documentada, no oculta:
 
-- **Calendario/dispatch board**: `apps/web`'s Jobs page es una lista, no
-  una vista de calendario/semana con arrastrar-y-soltar.
 - **Cámara en `apps/mobile`** para adjuntar fotos desde el flujo de
   clock-out — bloqueado en tener un dispositivo/simulador real para
   verificarlo, mismo gap documentado desde Fase 6.
@@ -441,6 +439,53 @@ servicio), pero no tenía ninguna pantalla. Cerrado ahora:
   `setSession()`, y que el nav cambia correctamente al set operativo
   al aceptar como Staff en esa segunda organización.
 
+### Funcionalidad — calendario/dispatch board
+
+Último ítem grande de la lista de brechas deliberadas: `JobsPage` era
+una lista, no una vista de calendario/semana. Cerrado con un toggle
+List/Calendar dentro de la misma página (no una ruta nueva) — la lista
+sigue siendo necesaria para jobs sin `scheduledStart` (`DRAFT`), que
+una vista de calendario no tiene dónde ubicar.
+
+- Backend: `GET /jobs` gana `scheduledFrom`/`scheduledTo` opcionales
+  (`ListJobsQueryDto`, mismo patrón de nombres que
+  `DateRangeQueryDto` en `modules/reports`), filtrando sobre
+  `scheduledStart`. Necesario porque paginar a 100 filas no alcanza
+  para "todos los jobs de esta semana" en una organización con
+  suficiente volumen — antes de este cambio no había forma de pedirle
+  a la API un rango de fechas en absoluto.
+- `JobsCalendarView` (`apps/web/src/components/jobs/`): vista de
+  semana, un componente nuevo y autocontenido (fetch propio por
+  semana, sin tocar el estado de paginación de la vista de lista).
+  Arrastrar-y-soltar con drag-and-drop nativo de HTML5 (sin librería —
+  es el único lugar de la app que lo necesita): soltar un job en otro
+  día llama al mismo `PATCH /jobs/:id` que ya usa el formulario de
+  edición, preservando la hora del día y la duración original
+  (`scheduledEnd - scheduledStart`), no un endpoint nuevo. Click (sin
+  arrastrar) abre el mismo modal de edición que la vista de lista, vía
+  un callback `onOpenJob` — un solo modal, dos formas de llegar a él.
+  Navegación semana anterior/siguiente/"Today".
+- **Verificado en vivo, con un drag-and-drop real, no simulado**: se
+  creó una organización/cliente/job real vía HTTP con
+  `scheduledStart` en el día de hoy, y con Playwright (`dragTo`, que
+  despacha los eventos HTML5 DnD reales, no solo un mousemove) se
+  arrastró la tarjeta del job a la columna del día siguiente; se
+  confirmó contra la API (`GET /jobs`, sin filtro de fecha) que
+  `scheduledStart` efectivamente cambió al nuevo día conservando la
+  hora. Se verificó el click-para-editar, y la navegación de semanas
+  (con `waitForResponse` en vez de esperas arbitrarias, para no
+  depender de timing): la semana anterior no muestra el job movido, la
+  semana actual sí. Un primer intento de esta última verificación dio
+  un falso positivo — `document.body.textContent` incluía el nombre
+  del cliente porque aparecía como `<option>` dentro del `<select>`
+  del modal "New job", que queda en el DOM (oculto, no desmontado)
+  incluso cerrado; se corrigió acotando el assert al grid del
+  calendario en vez de al `body` completo, y se confirmó con el HTML
+  real del grid que estaba vacío como se esperaba.
+- Cobertura e2e nueva en `business-flows.e2e.spec.ts`: el filtro
+  `scheduledFrom`/`scheduledTo` incluye un job dentro de la ventana y
+  lo excluye fuera de ella.
+
 ### Verificación de este addendum
 
 - `pnpm --filter web run build` / `lint` / `test` — verde.
@@ -450,16 +495,17 @@ servicio), pero no tenía ninguna pantalla. Cerrado ahora:
   (`prisma migrate dev`), sin downtime porque son solo `CREATE INDEX`
   aditivos.
 - `docs/api/openapi.yaml` regenerado (`pnpm docs:api`) para incluir
-  `GET /invoices/:id/pdf`.
+  `GET /invoices/:id/pdf` y los nuevos query params de `GET /jobs`.
 - Tests nuevos: `decodeJwtRole()` (bien formado, sin claim `role`,
-  malformado) y `AuthContext` (`role` reflejando el JWT tras
-  login/restauración de sesión, y `setSession()`) — 14/14 tests de
-  `apps/web` verdes.
+  malformado), `AuthContext` (`role` reflejando el JWT tras
+  login/restauración de sesión, y `setSession()`), y el filtro de
+  fechas de `GET /jobs` — 14/14 tests de `apps/web`, 51/51 de
+  `apps/api`, verdes.
 
 **Fase 9 (incluyendo este addendum) completa.** Como en el cierre de
 Fase 8: no hay una fase siguiente definida en ningún documento del
 proyecto. De la lista de brechas deliberadas, quedan: portal de
-cliente en `apps/mobile`, calendario/dispatch board, cámara en mobile,
-notificaciones más allá de auth, y las migraciones mayores de
-dependencias — sin cambios respecto a lo documentado arriba. Cualquier
-dirección posterior necesita alcance definido por el stakeholder.
+cliente en `apps/mobile`, cámara en mobile, notificaciones más allá de
+auth, y las migraciones mayores de dependencias — sin cambios respecto
+a lo documentado arriba. Cualquier dirección posterior necesita
+alcance definido por el stakeholder.

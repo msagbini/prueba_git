@@ -13,7 +13,6 @@ import {
   type JobService as JobServiceRow,
 } from '@prisma/client';
 import { toDateOrUndefined } from '../../common/to-date';
-import type { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { paginate, type PaginatedResult } from '../../common/pagination';
 import { SAFE_USER_SELECT } from '../../common/safe-user';
 import { TenantContextService } from '../../prisma/tenant-context.service';
@@ -23,6 +22,7 @@ import type { CreateJobDto } from './dto/create-job.dto';
 import type { UpdateJobDto } from './dto/update-job.dto';
 import type { CreateJobAssignmentDto } from './dto/create-job-assignment.dto';
 import type { CreateJobServiceDto } from './dto/create-job-service.dto';
+import type { ListJobsQueryDto } from './dto/list-jobs-query.dto';
 
 /** Identifies the caller for row-level job visibility — see {@link JobsService.visibilityFilter}. */
 export interface JobCaller {
@@ -79,17 +79,26 @@ export class JobsService {
   ) {}
 
   /**
-   * Lists records.
+   * Lists records. `scheduledFrom`/`scheduledTo` (both optional) narrow
+   * to jobs scheduled in that window — the web dispatch calendar uses
+   * this to pull one week at a time instead of paging through every
+   * job in the organization.
    * @param caller the authenticated caller, for row-level visibility
-   * @param pagination the requested page/pageSize
+   * @param query the requested page/pageSize and optional scheduled-date window
    * @returns a page of jobs visible to the caller, with client/address/services details
    */
-  async list(
-    caller: JobCaller,
-    pagination: PaginationQueryDto,
-  ): Promise<PaginatedResult<JobWithDetails>> {
-    const where = { deletedAt: null, ...(await this.visibilityFilter(caller)) };
-    const { page, pageSize } = pagination;
+  async list(caller: JobCaller, query: ListJobsQueryDto): Promise<PaginatedResult<JobWithDetails>> {
+    const where: Prisma.JobWhereInput = {
+      deletedAt: null,
+      ...(await this.visibilityFilter(caller)),
+    };
+    if (query.scheduledFrom || query.scheduledTo) {
+      where.scheduledStart = {
+        ...(query.scheduledFrom ? { gte: new Date(query.scheduledFrom) } : {}),
+        ...(query.scheduledTo ? { lt: new Date(query.scheduledTo) } : {}),
+      };
+    }
+    const { page, pageSize } = query;
     const [items, total] = await Promise.all([
       this.tenantContext.client.job.findMany({
         where,

@@ -4,6 +4,7 @@ import { Button } from '../components/ui/Button';
 import { Field, SelectField, TextareaField } from '../components/ui/Field';
 import { Modal } from '../components/ui/Modal';
 import { Pagination } from '../components/ui/Pagination';
+import { JobsCalendarView } from '../components/jobs/JobsCalendarView';
 import type {
   Client,
   ClientAddress,
@@ -53,6 +54,7 @@ function toLocalInput(iso: string | null): string {
  * @returns the jobs page element
  */
 export function JobsPage(): JSX.Element {
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [page, setPage] = useState(1);
   const [result, setResult] = useState<Paginated<Job> | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -252,12 +254,34 @@ export function JobsPage(): JSX.Element {
     <div>
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">Jobs</h1>
-        <Button onClick={openCreate}>New job</Button>
+        <div className="flex items-center gap-3">
+          <div className="flex rounded border border-gray-300 text-xs">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`px-2 py-1 ${viewMode === 'list' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+            >
+              List
+            </button>
+            <button
+              onClick={() => setViewMode('calendar')}
+              className={`px-2 py-1 ${viewMode === 'calendar' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+            >
+              Calendar
+            </button>
+          </div>
+          <Button onClick={openCreate}>New job</Button>
+        </div>
       </div>
 
       {loadError && <p className="mt-4 text-sm text-red-600">{loadError}</p>}
 
-      {result && (
+      {viewMode === 'calendar' && (
+        <div className="mt-4">
+          <JobsCalendarView onOpenJob={openEdit} />
+        </div>
+      )}
+
+      {viewMode === 'list' && result && (
         <div className="mt-4 overflow-x-auto rounded border border-gray-200">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-left text-xs font-medium uppercase tracking-wide text-gray-500">

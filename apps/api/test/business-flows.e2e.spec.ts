@@ -168,6 +168,29 @@ describe('business flows (e2e)', () => {
     expect(jobService.body.unitPriceSnapshot).toBe('150');
   });
 
+  it('filters jobs by scheduledFrom/scheduledTo, for the dispatch calendar', async () => {
+    await request(server())
+      .patch(`/jobs/${jobAId}`)
+      .set('Authorization', `Bearer ${ownerAccessToken}`)
+      .send({
+        scheduledStart: '2026-09-10T09:00:00.000Z',
+        scheduledEnd: '2026-09-10T11:00:00.000Z',
+      })
+      .expect(200);
+
+    const inWindow = await request(server())
+      .get('/jobs?scheduledFrom=2026-09-08T00:00:00.000Z&scheduledTo=2026-09-15T00:00:00.000Z')
+      .set('Authorization', `Bearer ${ownerAccessToken}`)
+      .expect(200);
+    expect(inWindow.body.items.map((j: { id: string }) => j.id)).toContain(jobAId);
+
+    const outsideWindow = await request(server())
+      .get('/jobs?scheduledFrom=2026-09-15T00:00:00.000Z&scheduledTo=2026-09-22T00:00:00.000Z')
+      .set('Authorization', `Bearer ${ownerAccessToken}`)
+      .expect(200);
+    expect(outsideWindow.body.items.map((j: { id: string }) => j.id)).not.toContain(jobAId);
+  });
+
   it('invites and onboards a Staff member, who initially sees no jobs', async () => {
     await request(server())
       .post('/organizations/me/invitations')
