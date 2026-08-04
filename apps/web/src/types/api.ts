@@ -30,3 +30,38 @@ export interface Subscription {
 export interface CheckoutSession {
   checkoutUrl: string;
 }
+
+/** A page of results, as every DOS list endpoint returns since Fase 9's pagination pass. */
+export interface Paginated<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+export type ClientType = 'RESIDENTIAL' | 'COMMERCIAL';
+export type ClientStatus = 'ACTIVE' | 'INACTIVE';
+
+export interface Client {
+  id: string;
+  name: string;
+  type: ClientType;
+  primaryContactName: string | null;
+  email: string | null;
+  phone: string | null;
+  status: ClientStatus;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface ClientAddress {
+  id: string;
+  label: 'BILLING' | 'SERVICE';
+  addressLine1: string;
+  addressLine2: string | null;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+}
