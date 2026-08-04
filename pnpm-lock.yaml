@@ -280,8 +280,8 @@ importers:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
       react-router-dom:
-        specifier: ^6.27.0
-        version: 6.30.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: ^7.18.2
+        version: 7.18.2(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
     devDependencies:
       '@dos/config':
         specifier: workspace:*
@@ -1866,10 +1866,6 @@ packages:
   '@react-navigation/routers@7.6.4':
     resolution: {integrity: sha512-GI7eJm8/KsZUQaYcXvEExikKurRZRgEsSzyZ7faENfi65yqJBCXjDMwyN1pF6pNW1MoLH1ErDwDivFxY6BzD3w==}
 
-  '@remix-run/router@1.23.3':
-    resolution: {integrity: sha512-4An71tdz9X8+3sI4Qqqd2LWd9vS39J7sqd9EU4Scw7TJE/qB10Flv/UuqbPVgfQV9XoK8Np6jNquZitnZq5i+Q==}
-    engines: {node: '>=14.0.0'}
-
   '@rolldown/pluginutils@1.0.0-beta.27':
     resolution: {integrity: sha512-+d0F4MKMCbeVUJwG96uQ4SgAznZNSq93I3V+9NHA4OpvqG8mRCpGdKmK8l/dl02h2CCDHwW2FqilnTyDcAnqjA==}
 
@@ -3045,6 +3041,10 @@ packages:
   cookie@0.7.2:
     resolution: {integrity: sha512-yki5XnKuf750l50uGTllt6kKILY4nQ1eNIQatoXEByZ5dWgnKqbnqmTrBE5B4N7lrMJKQ2ytWMiTO2o0v6Ew/w==}
     engines: {node: '>= 0.6'}
+
+  cookie@1.1.1:
+    resolution: {integrity: sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ==}
+    engines: {node: '>=18'}
 
   cookiejar@2.1.4:
     resolution: {integrity: sha512-LDx6oHrK+PhzLKJU9j5S7/Y3jM/mUHvD/DeI1WQmJn652iPC5Y4TBzC9l+5OMOXlyTTA+SmVUPm0HQUwpD5Jqw==}
@@ -5272,25 +5272,28 @@ packages:
     resolution: {integrity: sha512-z6F7K9bV85EfseRCp2bzrpyQ0Gkw1uLoCel9XBVWPg/TjRj94SkJzUTGfOa4bs7iJvBWtQG0Wq7wnI0syw3EBQ==}
     engines: {node: '>=0.10.0'}
 
-  react-router-dom@6.30.4:
-    resolution: {integrity: sha512-q4HvNl+mmDdkS0g+MqiBZNteQJCuimWoOyHMy4T/RQLAn9Z29+E91QXRaxOujeMl2HTzRSS0KFPd7lxX3PjV0Q==}
-    engines: {node: '>=14.0.0'}
+  react-router-dom@7.18.2:
+    resolution: {integrity: sha512-AIKJ/jgGlFb3EbfCXk5Gzshiwt+l3mqbCrNjmEWMMjqQxNJ3svBa6bgzFyCC2Sw3RA0VWF1kg3uQf2OFhxb8hw==}
+    engines: {node: '>=20.0.0'}
     peerDependencies:
       '@types/react': '*'
-      react: '>=16.8'
-      react-dom: '>=16.8'
+      react: '>=18'
+      react-dom: '>=18'
     peerDependenciesMeta:
       '@types/react':
         optional: true
 
-  react-router@6.30.4:
-    resolution: {integrity: sha512-SVUsDe+DybHM/WmYKIVYhZh1o5Dcuf16yM6WjG02Q9XVFMZIJyHYhwrr6bFBXZkVP6z69kNkMyBCujt8FaFLJA==}
-    engines: {node: '>=14.0.0'}
+  react-router@7.18.2:
+    resolution: {integrity: sha512-aUVMjFm3GAPTTZL7oYr5E7ETiqfQCHRLH+B+5afnICvf0r7kkK4eR6SMuwbSTJw/7t+12khT/Kahij49fqOCIg==}
+    engines: {node: '>=20.0.0'}
     peerDependencies:
       '@types/react': '*'
-      react: '>=16.8'
+      react: '>=18'
+      react-dom: '>=18'
     peerDependenciesMeta:
       '@types/react':
+        optional: true
+      react-dom:
         optional: true
 
   react-test-renderer@19.2.3:
@@ -5496,6 +5499,9 @@ packages:
 
   set-blocking@2.0.0:
     resolution: {integrity: sha512-KiKBS8AnWGEyLzofFfmvKwpdPzqiy16LvQfK3yv/fVH7Bj13/wl3JSR1J+rfgRE9q7xUJK4qvgS8raSOeLUehw==}
+
+  set-cookie-parser@2.7.2:
+    resolution: {integrity: sha512-oeM1lpU/UvhTxw+g3cIfxXHyJRc/uidd3yK1P242gzHds0udQBYzs3y8j4gCCW+ZJ7ad0yctld8RYO+bdurlvw==}
 
   set-function-length@1.2.2:
     resolution: {integrity: sha512-pgRc4hJ4/sNjWCSS9AmnS40x3bNMDTknHgL5UaMBTMyJnU90EgWh1Rz+MC9eFu4BuN/UwZjKQuY/1v3rM7HMfg==}
@@ -8416,8 +8422,6 @@ snapshots:
     dependencies:
       nanoid: 3.3.16
 
-  '@remix-run/router@1.23.3': {}
-
   '@rolldown/pluginutils@1.0.0-beta.27': {}
 
   '@rollup/rollup-android-arm-eabi@4.62.4':
@@ -9727,6 +9731,8 @@ snapshots:
   cookie-signature@1.2.2: {}
 
   cookie@0.7.2: {}
+
+  cookie@1.1.1: {}
 
   cookiejar@2.1.4: {}
 
@@ -12528,21 +12534,22 @@ snapshots:
 
   react-refresh@0.17.0: {}
 
-  react-router-dom@6.30.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+  react-router-dom@7.18.2(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
     dependencies:
-      '@remix-run/router': 1.23.3
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
-      react-router: 6.30.4(@types/react@18.3.31)(react@18.3.1)
+      react-router: 7.18.2(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
     optionalDependencies:
       '@types/react': 18.3.31
 
-  react-router@6.30.4(@types/react@18.3.31)(react@18.3.1):
+  react-router@7.18.2(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
     dependencies:
-      '@remix-run/router': 1.23.3
+      cookie: 1.1.1
       react: 18.3.1
+      set-cookie-parser: 2.7.2
     optionalDependencies:
       '@types/react': 18.3.31
+      react-dom: 18.3.1(react@18.3.1)
 
   react-test-renderer@19.2.3(react@19.2.3):
     dependencies:
@@ -12802,6 +12809,8 @@ snapshots:
       - supports-color
 
   set-blocking@2.0.0: {}
+
+  set-cookie-parser@2.7.2: {}
 
   set-function-length@1.2.2:
     dependencies:

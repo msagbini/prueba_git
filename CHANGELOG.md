@@ -63,6 +63,29 @@ deliberately unbuilt (`docs/technical-log/phase-9.md` has the full log).
   gets a matching `NotificationsButton` (badge, header, both the Staff
   and Client stacks) and a `NotificationsScreen`.
 
+### Changed — Fase 9.1
+
+- **`react-router-dom` 6→7**: `apps/web` used only declarative routing
+  (no data router, no splat routes), which v7 was designed to accept
+  as-is — no code changes needed. Resolves 2 of the pre-existing
+  dependency vulnerabilities (`GHSA-jjmj-jmhj-qwj2`, unpatched in the
+  6.x line; `GHSA-337j-9hxr-rhxg`, patched in 7.18.0+):
+  `pnpm audit --prod` goes from 15 to 13. Verified live with
+  Playwright: all nav links, dashboard shortcuts, browser back/
+  forward, logout, and protected/public route guarding.
+
+### Found, not fixed — Fase 9.1
+
+- **Refresh-token rotation race**: several full-page reloads in quick
+  succession can trigger the reuse-detection defense and revoke the
+  caller's entire token family, forcing an unwanted logout. Found
+  while live-verifying the react-router migration above (an unrealistic
+  test pattern — rapid `goto()` calls — triggers it; realistic
+  client-side navigation does not). Root cause is in the Fase 2
+  refresh-token rotation logic, unrelated to routing; left as a
+  documented finding rather than fixed in the same commit as an
+  unrelated dependency bump.
+
 ### Added — Fase 9: Hardening y funcionalidad operativa
 
 Not part of the original 8-phase roadmap (that closed at Fase 8) —

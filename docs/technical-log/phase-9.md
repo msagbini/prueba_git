@@ -665,13 +665,74 @@ se habían verificado en vivo contra la API real al construir el
 - `pnpm audit --prod`: mismas 15 vulnerabilidades pre-existentes, sin
   cambios (no se agregó ninguna dependencia nueva para este módulo).
 
+### Migración: `react-router-dom` 6→7
+
+De las dos migraciones mayores de dependencias que quedaban
+explícitamente diferidas, esta era la de menor riesgo real: `apps/web`
+usa únicamente el modo declarativo (`BrowserRouter`/`Routes`/`Route`,
+sin data router, sin `loader`/`action`, sin rutas splat `*`), que es
+exactamente el caso que react-router v7 diseñó como superset
+compatible de v6 — y la consola ya venía emitiendo los warnings de
+preparación para v7 (`v7_startTransition`, `v7_relativeSplatPath`)
+desde antes de esta fase, señal de que el terreno ya estaba
+preparado. Se evaluó antes de tocar nada: sin eso, no se hubiera
+intentado en la misma pasada que el resto de este addendum.
+
+- `pnpm --filter web add react-router-dom@^7.18.2` — bump directo, sin
+  cambios de código: compila limpio, sin errores de tipos.
+- **Beneficio real, no solo la versión**: resuelve 2 de las
+  vulnerabilidades de dependencias documentadas desde el audit
+  original de Fase 9 (`GHSA-jjmj-jmhj-qwj2`, sin parche disponible en
+  la serie 6.x; `GHSA-337j-9hxr-rhxg`, parcheada recién en 7.18.0+).
+  `pnpm audit --prod`: 15 → 13 vulnerabilidades.
+- Bundle inicial creció de 180.78 kB (58.97 kB gzip) a 195.73 kB
+  (64.12 kB gzip) — el core de v7 es más grande. Aceptado: es el costo
+  de estar en la versión soportada actual más el cierre de dos
+  vulnerabilidades reales, no una regresión de rendimiento buscada.
+- **Verificado en vivo con Playwright**, no solo con el build: los 6
+  links de navegación operativa, las tarjetas de acceso directo del
+  dashboard, el toggle List/Calendar de Jobs (estado interno, no
+  routing, pero se confirmó que sigue andando), atrás/adelante del
+  navegador vía la History API, logout, redirección de rutas
+  protegidas a `/login` para un visitante no autenticado, y que
+  `/forgot-password` (ruta pública) sigue rindiendo bien. Consola
+  limpia de warnings de react-router (los de v6 preparándose para v7
+  desaparecieron, como se esperaba).
+
+**Hallazgo real, no relacionado con esta migración, encontrado
+mientras se verificaba**: una secuencia de recargas de página
+completas muy seguidas (`goto()` repetidos en rápida sucesión, algo
+que un usuario real casi nunca hace, pero que un script de
+verificación sí) puede terminar en un 401 y forzar logout. La
+hipótesis, no confirmada con instrumentación del lado del servidor:
+`AuthContext` dispara `POST /auth/refresh` en cada montaje completo de
+la app; si una recarga nueva interrumpe el fetch de la rotación
+anterior antes de que el navegador reciba el `Set-Cookie` con el
+refresh token nuevo — pero el servidor ya procesó la rotación y
+revocó el viejo — la siguiente carga reintenta con el token ya
+revocado, dispara la detección de reuso, y revoca toda la familia de
+tokens. Esto es un problema de la lógica de rotación de refresh
+tokens (Fase 2), no de qué router se usa para renderizar rutas —
+confirmado repitiendo la verificación con navegación client-side
+realista (clicks en vez de `goto()` en cadena), donde logout/rutas
+protegidas/rutas públicas funcionan exactamente como se espera. Se
+deja documentado como hallazgo nuevo, no se intenta arreglar en este
+commit — es código de seguridad sensible (rotación + detección de
+reuso de tokens) que merece su propia pasada deliberada, no algo para
+mezclar con una migración de router.
+
+### Verificación de la migración de react-router
+
+- `pnpm --filter web run build` / `lint` / `test` — verde.
+- `pnpm turbo run lint build test --force` — 9/9 tareas verdes en todo
+  el monorepo.
+
 **Fase 9 (incluyendo este addendum) completa.** Como en el cierre de
 Fase 8: no hay una fase siguiente definida en ningún documento del
 proyecto. De la lista de brechas deliberadas, quedan: cámara en
-mobile, y las migraciones mayores de dependencias (NestJS 10→11,
-react-router 6→7) — ambas siguen fuera de esta pasada por las mismas
-razones ya documentadas (la primera, bloqueada en tener un
-dispositivo real; la segunda, con una superficie de cambios
-incompatibles demasiado grande para verificar con el mismo rigor que
-el resto de este documento). Cualquier dirección posterior necesita
-alcance definido por el stakeholder.
+mobile, la migración de NestJS 10→11 (superficie de cambios
+incompatibles — Express v5, sintaxis de rutas de path-to-regexp v8 —
+demasiado grande para verificar con el mismo rigor que el resto de
+este documento en una sola pasada), y el hallazgo nuevo de la
+rotación de refresh tokens documentado arriba. Cualquier dirección
+posterior necesita alcance definido por el stakeholder.
