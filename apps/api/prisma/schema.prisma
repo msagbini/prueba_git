@@ -102,6 +102,7 @@ model Organization {
   jobAttachments    JobAttachment[]
   invoiceLineItems  InvoiceLineItem[]
   subscription      Subscription?
+  notifications     Notification[]
 
   @@map("organizations")
 }
@@ -139,6 +140,7 @@ model User {
   createdJobs             Job[]                    @relation("JobCreatedBy")
   uploadedJobAttachments  JobAttachment[]          @relation("JobAttachmentUploadedBy")
   auditLogActions         AuditLog[]
+  notifications           Notification[]
 
   @@map("users")
 }
@@ -823,4 +825,43 @@ model Subscription {
 
   @@index([organizationId])
   @@map("subscriptions")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications (Fase 9.1) — surfaces events that already happen (a staff
+// assignment, a job coming up soon) as in-app notifications, rather than
+// introducing a new business process. No email/push delivery here; auth's
+// transactional emails (Fase 9) already cover that channel for the events
+// that need it.
+
+enum NotificationType {
+  JOB_ASSIGNED
+  JOB_REMINDER
+
+  @@map("notification_type")
+}
+
+/// One in-app notification for one recipient. `entityType`/`entityId`
+/// point at what it's about (e.g. `"Job"`/a job id) — kept as a loose
+/// pair rather than a proper relation since a notification can end up
+/// pointing at different entity types as `NotificationType` grows, and
+/// nothing here needs to join against it beyond display.
+model Notification {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  userId         String            @map("user_id") @db.Uuid
+  type           NotificationType
+  title          String
+  body           String
+  entityType     String?           @map("entity_type")
+  entityId       String?           @map("entity_id") @db.Uuid
+  readAt         DateTime?         @map("read_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@index([organizationId])
+  @@index([userId, createdAt])
+  @@map("notifications")
 }

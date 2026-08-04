@@ -178,3 +178,16 @@ export interface InvitationPreview {
   invitedByName: string;
   email: string;
 }
+
+export type NotificationType = 'JOB_ASSIGNED' | 'JOB_REMINDER';
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  entityType: string | null;
+  entityId: string | null;
+  readAt: string | null;
+  createdAt: string;
+}

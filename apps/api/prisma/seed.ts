@@ -35,6 +35,11 @@ const PERMISSIONS = [
     module: 'reports',
     description: 'View operational and financial reports',
   },
+  {
+    code: 'notifications.read',
+    module: 'notifications',
+    description: 'View your own notifications',
+  },
 ] as const;
 
 /** Which permission codes each system role grants, per the RBAC matrix in docs/architecture/auth.md. */
@@ -52,9 +57,10 @@ const ROLE_PERMISSIONS: Record<RoleCode, readonly string[]> = {
     'invoices.read',
     'payments.manage',
     'payments.read',
+    'notifications.read',
   ],
-  [RoleCode.STAFF]: ['jobs.read', 'staff.read'],
-  [RoleCode.CLIENT]: ['jobs.read', 'invoices.read', 'payments.read'],
+  [RoleCode.STAFF]: ['jobs.read', 'staff.read', 'notifications.read'],
+  [RoleCode.CLIENT]: ['jobs.read', 'invoices.read', 'payments.read', 'notifications.read'],
 };
 
 const ROLES: { code: RoleCode; name: string; description: string }[] = [

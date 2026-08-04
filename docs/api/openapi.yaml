@@ -882,6 +882,59 @@ paths:
         - jobs
       security:
         - bearer: []
+  /notifications:
+    get:
+      operationId: NotificationsController_list
+      parameters:
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: pageSize
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 25
+            type: number
+      responses:
+        '200':
+          description: ''
+      tags:
+        - notifications
+      security:
+        - bearer: []
+  /notifications/unread-count:
+    get:
+      operationId: NotificationsController_unreadCount
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - notifications
+      security:
+        - bearer: []
+  /notifications/{id}/read:
+    post:
+      operationId: NotificationsController_markRead
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '201':
+          description: ''
+      tags:
+        - notifications
+      security:
+        - bearer: []
   /staff:
     get:
       operationId: StaffController_list

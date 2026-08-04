@@ -236,6 +236,43 @@ describe('business flows (e2e)', () => {
     expect(jobsAsStaff.body.items).toHaveLength(1);
     expect(jobsAsStaff.body.items[0].id).toBe(jobAId);
 
+    // The assignment above notifies the assigned Staff member.
+    const unread = await request(server())
+      .get('/notifications/unread-count')
+      .set('Authorization', `Bearer ${staffAccessToken}`)
+      .expect(200);
+    expect(unread.body.count).toBe(1);
+
+    const notifications = await request(server())
+      .get('/notifications')
+      .set('Authorization', `Bearer ${staffAccessToken}`)
+      .expect(200);
+    expect(notifications.body.items).toHaveLength(1);
+    const notification = notifications.body.items[0];
+    expect(notification.type).toBe('JOB_ASSIGNED');
+    expect(notification.entityId).toBe(jobAId);
+
+    // The Owner has no notifications of their own — this one belongs to Staff.
+    const ownerUnread = await request(server())
+      .get('/notifications/unread-count')
+      .set('Authorization', `Bearer ${ownerAccessToken}`)
+      .expect(200);
+    expect(ownerUnread.body.count).toBe(0);
+    await request(server())
+      .post(`/notifications/${notification.id}/read`)
+      .set('Authorization', `Bearer ${ownerAccessToken}`)
+      .expect(404);
+
+    await request(server())
+      .post(`/notifications/${notification.id}/read`)
+      .set('Authorization', `Bearer ${staffAccessToken}`)
+      .expect(201);
+    const afterRead = await request(server())
+      .get('/notifications/unread-count')
+      .set('Authorization', `Bearer ${staffAccessToken}`)
+      .expect(200);
+    expect(afterRead.body.count).toBe(0);
+
     await request(server())
       .patch(`/jobs/${jobAId}`)
       .set('Authorization', `Bearer ${staffAccessToken}`)

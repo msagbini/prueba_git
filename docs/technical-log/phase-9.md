@@ -254,8 +254,6 @@ listan aquí para que la brecha esté documentada, no oculta:
 - **Cámara en `apps/mobile`** para adjuntar fotos desde el flujo de
   clock-out — bloqueado en tener un dispositivo/simulador real para
   verificarlo, mismo gap documentado desde Fase 6.
-- **Notificaciones más allá de auth** (recordatorio de cita, job
-  asignado) — no hay módulo de notificaciones.
 - **Migraciones mayores de dependencias** (NestJS 10→11, react-router
   6→7) que resolverían de raíz las vulnerabilidades restantes — cada una
   es su propio esfuerzo de migración con su propia superficie de cambios
@@ -531,6 +529,87 @@ tocar el modelo de permisos del backend (ya existía desde Fase 2).
   fueron ejercitados en vivo con un token real de rol `CLIENT` al
   verificar el portal de `apps/web` más arriba en este documento.
 
+### Funcionalidad — notificaciones (job-assigned, job-reminder)
+
+El último ítem grande de la lista de brechas deliberadas era
+"notificaciones más allá de auth", explícitamente marcado como algo
+que requeriría definir alcance de negocio nuevo — no algo para
+construir unilateralmente bajo la autorización estándar de esta fase.
+El stakeholder lo autorizó explícitamente ("Dale todo lo que creas.
+Sigue tú en lo tuyo"), así que el diseño de alcance de esta sección
+es una decisión tomada bajo esa autorización puntual, no bajo la
+autorización general de "doble-chequeado y probado" del resto de la
+Fase 9.1.
+
+**Decisión de alcance, y por qué:** en vez de inventar un proceso de
+negocio nuevo, el módulo solo superficia dos eventos que ya ocurren:
+una asignación de staff a un job, y un job por empezar pronto. Sin
+entrega por email/push — el email transaccional de Fase 9 ya cubre el
+único canal que los eventos de auth necesitaban, y agregar un segundo
+canal de entrega sería inventar alcance real, no solo superficiar un
+evento existente.
+
+- **Schema**: `Notification` (`organizationId`, `userId` destinatario,
+  `type` — `JOB_ASSIGNED`/`JOB_REMINDER` —, `title`, `body`,
+  `entityType`/`entityId` sueltos en vez de una relación real, porque
+  distintos tipos de notificación futuros podrían apuntar a distintos
+  tipos de entidad, `readAt`). Migración con la misma política RLS
+  `tenant_isolation` de siempre; la restricción a "mis propias
+  notificaciones" (`userId = caller`) se aplica en
+  `NotificationsService`, la misma segunda capa que ya usan los
+  filtros de visibilidad de Staff/Client en Jobs/Invoices — RLS
+  nunca fue pensado para filtrar por usuario, solo por organización.
+  Permiso `notifications.read` sembrado para los cinco roles (una
+  notificación es personal por construcción, no hay nada que un
+  permiso además restrinja).
+- **`NotificationWriterService`** (`modules/notifications`, exportado)
+  espeja el rol de `AuditLogWriterService` para el trail de auditoría:
+  el único punto de escritura que otros módulos usan. `JobsService.
+createAssignment()` lo llama justo después de crear el
+  `JobAssignment`, notificando al staff asignado.
+- **`JobRemindersService`** (`modules/jobs`, nuevo, junto a
+  `RecurringJobsService`): corre cada hora (no diario, como
+  `RecurringJobsService` — una ventana de recordatorio de 24h no
+  debería esperar a la corrida de la mañana siguiente si un job entra
+  a esa ventana a mitad del día), mismo mecanismo de
+  `system_job_read_all` + `runInTenantTransaction` para no tener
+  contexto de tenant por-request. Notifica a cada staff asignado y a
+  cada usuario de portal de cliente ligado al `clientId` del job (un
+  cliente puede tener más de un usuario de portal — se notifica a
+  todos, no solo al primero). Idempotente revisando si ya existe una
+  notificación `JOB_REMINDER` para ese job+destinatario antes de
+  crear otra, en vez de agregar un campo nuevo a `Job` para rastrear
+  "ya se envió un recordatorio" — la tabla `Notification` ya tiene
+  todo lo necesario para esa revisión.
+- **API**: `GET /notifications` (paginado, propias, más recientes
+  primero), `GET /notifications/unread-count` (para un badge),
+  `POST /notifications/:id/read` (idempotente, 404 si no es propia).
+- **`apps/web`**: `NotificationBell` en `AppLayout` — badge con el
+  conteo sin leer (poll cada 30s), dropdown con las últimas
+  notificaciones, click marca como leída. Sin deep-link a la entidad
+  subyacente — cada tipo de notificación actual ya tiene un
+  "next step" obvio ("andá a ver tus jobs") sin necesitar uno.
+- **Verificado en vivo de punta a punta, no solo con los tests**: se
+  creó una organización, un cliente, un job, y un staff real por
+  HTTP; se confirmó el conteo de no-leídas en 0 antes de asignar, se
+  asignó el staff al job, y se confirmó la notificación real
+  (`JOB_ASSIGNED`, título/cuerpo con el nombre real del cliente) en
+  la lista del staff — y que el Owner no la ve ni puede marcarla como
+  leída (404). Con Playwright real se probó el bell completo en el
+  navegador: badge con conteo real, dropdown con el contenido real,
+  click marca como leída y el badge desaparece, click-afuera cierra
+  el dropdown. Para el cron de recordatorios (imposible de esperar en
+  vivo — corre cada hora) se escribió un test de integración contra
+  Postgres real (`job-reminders.integration.spec.ts`, mismo patrón
+  que `recurring-jobs.integration.spec.ts`): un job dentro de la
+  ventana de 24h notifica tanto al staff asignado como al usuario de
+  portal del cliente, uno fuera de la ventana no notifica a nadie, y
+  correr el cron dos veces no duplica notificaciones.
+- Cobertura e2e nueva en `business-flows.e2e.spec.ts`: el flujo
+  completo de asignación → notificación → aislamiento entre
+  usuarios → marcar como leída, agregado al test de asignación de
+  Staff ya existente.
+
 ### Verificación de este addendum
 
 - `pnpm --filter web run build` / `lint` / `test` — verde.
@@ -540,17 +619,25 @@ tocar el modelo de permisos del backend (ya existía desde Fase 2).
   (`prisma migrate dev`), sin downtime porque son solo `CREATE INDEX`
   aditivos.
 - `docs/api/openapi.yaml` regenerado (`pnpm docs:api`) para incluir
-  `GET /invoices/:id/pdf` y los nuevos query params de `GET /jobs`.
+  `GET /invoices/:id/pdf`, los nuevos query params de `GET /jobs`, y
+  las tres rutas de `/notifications`.
 - Tests nuevos: `decodeJwtRole()` (bien formado, sin claim `role`,
   malformado) en `apps/web` y `apps/mobile`; `AuthContext` (`role`
   reflejando el JWT tras login/restauración de sesión, y
-  `setSession()`) en `apps/web`; el filtro de fechas de `GET /jobs` en
-  `apps/api` — 14/14 tests de `apps/web`, 11/11 de `apps/mobile`,
-  51/51 de `apps/api`, verdes.
+  `setSession()`) en `apps/web`; el filtro de fechas de `GET /jobs`,
+  el flujo de asignación → notificación, y `JobRemindersService`
+  (integración contra Postgres real) en `apps/api` — 14/14 tests de
+  `apps/web`, 11/11 de `apps/mobile`, 54/54 de `apps/api`, verdes.
+- `pnpm audit --prod`: mismas 15 vulnerabilidades pre-existentes, sin
+  cambios (no se agregó ninguna dependencia nueva para este módulo).
 
 **Fase 9 (incluyendo este addendum) completa.** Como en el cierre de
 Fase 8: no hay una fase siguiente definida en ningún documento del
 proyecto. De la lista de brechas deliberadas, quedan: cámara en
-mobile, notificaciones más allá de auth, y las migraciones mayores de
-dependencias — sin cambios respecto a lo documentado arriba. Cualquier
-dirección posterior necesita alcance definido por el stakeholder.
+mobile, y las migraciones mayores de dependencias (NestJS 10→11,
+react-router 6→7) — ambas siguen fuera de esta pasada por las mismas
+razones ya documentadas (la primera, bloqueada en tener un
+dispositivo real; la segunda, con una superficie de cambios
+incompatibles demasiado grande para verificar con el mismo rigor que
+el resto de este documento). Cualquier dirección posterior necesita
+alcance definido por el stakeholder.

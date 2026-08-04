@@ -20,6 +20,7 @@ import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { PlansModule } from './modules/plans/plans.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 /** Root application module — wires together config, infrastructure and feature modules. */
 @Module({
@@ -51,6 +52,7 @@ import { ReportsModule } from './modules/reports/reports.module';
     PlansModule,
     BillingModule,
     ReportsModule,
+    NotificationsModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

@@ -18,6 +18,7 @@ import { SAFE_USER_SELECT } from '../../common/safe-user';
 import { TenantContextService } from '../../prisma/tenant-context.service';
 import { AuditLogWriterService } from '../audit-logs/audit-log-writer.service';
 import { BillingService } from '../billing/billing.service';
+import { NotificationWriterService } from '../notifications/notification-writer.service';
 import type { CreateJobDto } from './dto/create-job.dto';
 import type { UpdateJobDto } from './dto/update-job.dto';
 import type { CreateJobAssignmentDto } from './dto/create-job-assignment.dto';
@@ -71,11 +72,13 @@ export class JobsService {
    * @param tenantContext the current request's tenant-scoped Prisma client
    * @param auditLog records changes made through this service
    * @param billing enforces the active plan's active-job limit
+   * @param notifications notifies a staff member when they're assigned to a job
    */
   constructor(
     private readonly tenantContext: TenantContextService,
     private readonly auditLog: AuditLogWriterService,
     private readonly billing: BillingService,
+    private readonly notifications: NotificationWriterService,
   ) {}
 
   /**
@@ -329,7 +332,9 @@ export class JobsService {
   }
 
   /**
-   * Assigns staff to a job.
+   * Assigns staff to a job. Notifies the assigned staff member
+   * (`NotificationType.JOB_ASSIGNED`) so they learn about it without
+   * having to keep re-checking their jobs list.
    * @param organizationId the caller's active organization
    * @param actorUserId the caller, for the audit trail
    * @param caller the authenticated caller, for row-level visibility
@@ -344,7 +349,7 @@ export class JobsService {
     jobId: string,
     dto: CreateJobAssignmentDto,
   ): Promise<JobAssignment> {
-    await this.findOrThrow(caller, jobId);
+    const job = await this.findOrThrow(caller, jobId);
 
     const membership = await this.tenantContext.client.organizationMembership.findFirst({
       where: { id: dto.membershipId },
@@ -366,6 +371,18 @@ export class JobsService {
       entityType: 'JobAssignment',
       entityId: assignment.id,
       after: assignment,
+    });
+
+    await this.notifications.create({
+      organizationId,
+      userId: membership.userId,
+      type: 'JOB_ASSIGNED',
+      title: 'New job assigned',
+      body: job.client
+        ? `You've been assigned to a job for ${job.client.name}.`
+        : "You've been assigned to a job.",
+      entityType: 'Job',
+      entityId: jobId,
     });
 
     return assignment;

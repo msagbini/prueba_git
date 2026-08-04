@@ -51,6 +51,15 @@ deliberately unbuilt (`docs/technical-log/phase-9.md` has the full log).
   client portal. No PDF download on mobile (documented gap — needs a
   file-saving library this bare RN app doesn't have, unverifiable
   without a device).
+- **Notifications**: a new `Notification` model surfaces two existing
+  events as in-app notifications rather than inventing a new business
+  process — a staff member being assigned to a job, and a job
+  starting within 24 hours (a new hourly `JobRemindersService`, also
+  notifying any client-portal user linked to the job's client). No
+  email/push delivery. `GET /notifications`, `GET /notifications/
+  unread-count`, `POST /notifications/:id/read`, all scoped to the
+  caller's own notifications. `apps/web` gets a `NotificationBell` in
+  the nav bar (unread badge, dropdown, mark-as-read).
 
 ### Added — Fase 9: Hardening y funcionalidad operativa
 

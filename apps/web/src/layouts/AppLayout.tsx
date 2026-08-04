@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { NotificationBell } from '../components/NotificationBell';
 
 const OPERATIONAL_NAV_LINKS = [
   { to: '/', label: 'Dashboard', end: true },
@@ -56,12 +57,15 @@ export function AppLayout(): JSX.Element {
               ))}
             </nav>
           </div>
-          <button
-            onClick={() => logout()}
-            className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100"
-          >
-            Sign out
-          </button>
+          <div className="flex items-center gap-3">
+            <NotificationBell />
+            <button
+              onClick={() => logout()}
+              className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-6 py-8">
