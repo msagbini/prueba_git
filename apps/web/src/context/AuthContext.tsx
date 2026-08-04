@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { apiFetch, setAccessToken } from '../api/client';
 
 interface LoginTokens {
@@ -15,26 +15,44 @@ interface LoginRequiresSelection {
 type LoginResponse =
   ({ requiresOrganizationSelection: false } & { tokens: LoginTokens }) | LoginRequiresSelection;
 
+type AuthStatus = 'loading' | 'unauthenticated' | 'authenticated';
+
 interface AuthContextValue {
+  status: AuthStatus;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<LoginResponse>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 /**
- * Minimal auth state for this Fase 2 scaffold — holds whether the app has
- * an access token in memory and exposes `login`/`logout`. Session restore
- * on reload, the organization-selection UI for multi-membership accounts,
- * and switch-organization are all Fase 5/6 work; see
- * docs/architecture/auth.md for the flows this will eventually cover.
+ * Auth state for the SPA. The access token lives in memory only (never
+ * `localStorage`, to limit XSS blast radius — see docs/architecture/
+ * auth.md); the refresh token is an httpOnly cookie the SPA never reads
+ * directly. Session restore on boot works by attempting one silent
+ * `POST /auth/refresh` — the browser sends the cookie automatically —
+ * rather than trusting nothing and forcing a re-login on every page
+ * reload. Multi-organization account selection is not implemented yet
+ * (`login` still surfaces `requiresOrganizationSelection` for the
+ * caller to handle; `LoginPage` currently shows an error for that case).
  * @param props the provider's props
  * @param props.children the subtree that gets access to the auth context
  * @returns the provider element
  */
 export function AuthProvider({ children }: { children: ReactNode }): JSX.Element {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [status, setStatus] = useState<AuthStatus>('loading');
+
+  useEffect(() => {
+    apiFetch<LoginTokens>('/auth/refresh', { method: 'POST', body: JSON.stringify({}) })
+      .then((tokens) => {
+        setAccessToken(tokens.accessToken);
+        setStatus('authenticated');
+      })
+      .catch(() => {
+        setStatus('unauthenticated');
+      });
+  }, []);
 
   const login = async (email: string, password: string): Promise<LoginResponse> => {
     const result = await apiFetch<LoginResponse>('/auth/login', {
@@ -43,18 +61,25 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     });
     if (!result.requiresOrganizationSelection) {
       setAccessToken(result.tokens.accessToken);
-      setIsAuthenticated(true);
+      setStatus('authenticated');
     }
     return result;
   };
 
-  const logout = (): void => {
+  const logout = async (): Promise<void> => {
+    try {
+      await apiFetch('/auth/logout', { method: 'POST', body: JSON.stringify({}) });
+    } catch {
+      // Ignore — the local session is cleared regardless.
+    }
     setAccessToken(null);
-    setIsAuthenticated(false);
+    setStatus('unauthenticated');
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, login, logout }}>
+    <AuthContext.Provider
+      value={{ status, isAuthenticated: status === 'authenticated', login, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -6,7 +6,16 @@
 {
   "extends": "@react-native/typescript-config",
   "compilerOptions": {
-    "types": ["jest"]
+    "types": ["jest"],
+    // Override the base config's "jsx": "react-native" (classic transform,
+    // relies on @types/react's now-removed global JSX namespace). RN's own
+    // Babel preset (@react-native/babel-preset) already emits the automatic
+    // runtime; "react-jsx" here just makes tsc's type-checking agree with
+    // what's actually compiled, matching @types/react 19's module-scoped
+    // JSX namespace. Without this, every RN core component and any
+    // Context.Provider fails with TS2786 ("cannot be used as a JSX
+    // component") because the classic mode can't see React 19's JSX types.
+    "jsx": "react-jsx"
   },
   "include": ["**/*.ts", "**/*.tsx"],
   "exclude": ["**/node_modules", "**/Pods"]

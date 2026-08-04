@@ -2,9 +2,9 @@ const API_BASE_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:3
 
 /**
  * The current access token, held in memory only (never `localStorage`) —
- * see docs/architecture/auth.md. Reset on page reload; a real session
- * restore flow (silent refresh via the httpOnly cookie on app boot) is
- * Fase 5 work, not part of this scaffold.
+ * see docs/architecture/auth.md. Reset on page reload; `AuthContext`
+ * restores it on boot via a silent `POST /auth/refresh` against the
+ * httpOnly cookie (see `src/context/AuthContext.tsx`).
  */
 let accessToken: string | null = null;
 
@@ -36,8 +36,10 @@ export class ApiError extends Error {
  * access token and sends cookies (`credentials: 'include'`) so the
  * httpOnly refresh-token cookie is included — see
  * docs/architecture/auth.md for the token model this implements against.
- * Refresh-on-401 and other resilience behavior are Fase 5 work; this
- * scaffold only shapes the request/response contract.
+ * Does not itself retry a 401 with a silent refresh — `AuthContext`
+ * performs the one refresh call it needs (session restore on boot)
+ * directly; a general refresh-and-retry interceptor here is more
+ * machinery than this app's current call sites need.
  * @param path the API path, relative to `VITE_API_URL` (e.g. "/auth/me")
  * @param init standard fetch options
  * @returns the parsed JSON response body

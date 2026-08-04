@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 /**
- * The login screen. Multi-organization selection is Fase 5/6 work — this
- * scaffold only handles the single-membership path.
+ * The login screen. Multi-organization account selection isn't built yet
+ * (unlike `apps/mobile`'s `SelectOrganizationScreen`) — this only handles
+ * the single-membership path.
  * @returns the login form element
  */
 export function LoginPage(): JSX.Element {
