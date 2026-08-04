@@ -372,6 +372,8 @@ model Client {
   invitations  UserInvitation[]
 
   @@index([organizationId])
+  // ClientsService.list() (GET /clients) always orders by name within the organization.
+  @@index([organizationId, name])
   @@map("clients")
 }
 
@@ -406,6 +408,8 @@ model ClientAddress {
   jobsAsServiceAddress Job[]        @relation("JobServiceAddress")
 
   @@index([organizationId])
+  // ClientsService.listAddresses (GET /clients/:id/addresses) filters by clientId directly.
+  @@index([clientId])
   @@map("client_addresses")
 }
 
@@ -452,6 +456,8 @@ model Service {
   invoiceLineItems InvoiceLineItem[]
 
   @@index([organizationId])
+  // ServicesService.list() (GET /services) always orders by name within the organization.
+  @@index([organizationId, name])
   @@map("services")
 }
 
@@ -499,6 +505,14 @@ model Job {
   attachments        JobAttachment[]
 
   @@index([organizationId])
+  // `list()` (jobs.service.ts) always orders by scheduledStart within the
+  // caller's organization — this lets Postgres satisfy that with an
+  // index scan instead of a full-table sort once an organization has
+  // more than a handful of jobs.
+  @@index([organizationId, scheduledStart])
+  // The recurring-job materializer's duplicate check (recurring-jobs.service.ts)
+  // filters by parentJobId directly.
+  @@index([parentJobId])
   @@map("jobs")
 }
 
@@ -519,6 +533,7 @@ model JobService {
   service      Service      @relation(fields: [serviceId], references: [id])
 
   @@index([organizationId])
+  @@index([jobId])
   @@map("job_services")
 }
 
@@ -545,6 +560,7 @@ model JobAttachment {
   uploadedBy   User         @relation("JobAttachmentUploadedBy", fields: [uploadedByUserId], references: [id])
 
   @@index([organizationId])
+  @@index([jobId])
   @@map("job_attachments")
 }
 
@@ -571,6 +587,7 @@ model JobAssignment {
   membership   OrganizationMembership @relation(fields: [membershipId], references: [id])
 
   @@index([organizationId])
+  @@index([jobId])
   @@map("job_assignments")
 }
 
@@ -600,6 +617,8 @@ model StaffProfile {
   membership   OrganizationMembership @relation(fields: [membershipId], references: [id])
 
   @@index([organizationId])
+  // StaffService.list() (GET /staff) always orders by createdAt within the organization.
+  @@index([organizationId, createdAt])
   @@map("staff_profiles")
 }
 
@@ -637,6 +656,10 @@ model Invoice {
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId])
+  // InvoicesService.list() (GET /invoices) always orders by issueDate within the organization.
+  @@index([organizationId, issueDate])
+  // ClientsService/reports queries an invoice's client directly.
+  @@index([clientId])
   @@map("invoices")
 }
 
@@ -660,6 +683,7 @@ model InvoiceLineItem {
   service      Service?     @relation(fields: [serviceId], references: [id])
 
   @@index([organizationId])
+  @@index([invoiceId])
   @@map("invoice_line_items")
 }
 
@@ -700,6 +724,7 @@ model Payment {
   invoice      Invoice      @relation(fields: [invoiceId], references: [id])
 
   @@index([organizationId])
+  @@index([invoiceId])
   @@map("payments")
 }
 
