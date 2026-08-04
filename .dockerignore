@@ -1,0 +1,29 @@
+# Keeps the Docker build context small and avoids leaking local state
+# (node_modules built for the host arch, .env with real secrets, git
+# history) into the image or the layer cache. Mirrors .gitignore's
+# categories plus git/env/docker-specific entries .gitignore has no
+# reason to carry.
+node_modules/
+.pnpm-store/
+**/dist/
+**/build/
+**/coverage/
+.turbo/
+**/*.tsbuildinfo
+
+.git/
+.github/
+
+.env
+.env.local
+.env.*.local
+!.env.example
+
+*.log
+
+.DS_Store
+.vscode/
+.idea/
+
+apps/mobile/ios/
+apps/mobile/android/

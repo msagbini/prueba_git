@@ -45,6 +45,30 @@ test/
                                RBAC, row-level visibility, audit trail
 ```
 
+## Production build (Fase 7)
+
+`Dockerfile` (repo root context: `docker build -f apps/api/Dockerfile .`)
+builds a multi-stage production image — see its own comments for why
+each choice was made (base image, `pnpm deploy --legacy`, non-root
+user, `dumb-init`). CI builds it on every push (no registry push —
+where images get published is an undecided deploy-target question).
+This sandbox's own egress policy blocks Docker Hub pulls, so the build
+itself could not be run here; the `pnpm deploy` extraction step and an
+argon2 hash/verify round trip against its output _were_ run directly
+(no Docker needed for either) — see
+[`../../docs/technical-log/phase-7.md`](../../docs/technical-log/phase-7.md)
+for exactly what is and isn't verified.
+
+Also added in Fase 7, all live-verified against a running instance:
+`helmet` (security headers — confirmed compatible with Swagger UI's
+same-origin script tags), `compression` (confirmed gzip on responses
+over the default threshold), per-IP rate limiting via
+`@nestjs/throttler` (100 req/60s globally, confirmed a 429 after the
+limit and that it doesn't false-positive against the e2e suite's own
+traffic), and `app.enableShutdownHooks()` so `PrismaService`'s
+`onModuleDestroy` (closes the DB connection) actually runs on
+SIGTERM instead of the process just dying mid-request.
+
 ## Status
 
 All 11 business modules (`modules/*`) are implemented for real — see

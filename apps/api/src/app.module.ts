@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppConfigModule } from './config/config.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -22,6 +24,13 @@ import { ReportsModule } from './modules/reports/reports.module';
 @Module({
   imports: [
     AppConfigModule,
+    // Per-IP request limiting, applied globally via APP_GUARD below.
+    // 100 requests / 60s is generous for this API's real callers (the
+    // web/mobile clients making normal interactive traffic, plus
+    // occasional Stripe webhook deliveries) while still bounding a
+    // single misbehaving or malicious client — not a tuned production
+    // number, just a sane default; revisit with real traffic data.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     PrismaModule,
     AuthModule,
     OrganizationsModule,
@@ -40,5 +49,6 @@ import { ReportsModule } from './modules/reports/reports.module';
     ReportsModule,
     HealthModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

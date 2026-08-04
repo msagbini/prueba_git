@@ -74,3 +74,13 @@ jobs:
 
       - name: Check required READMEs
         run: pnpm docs:check-readmes
+
+      # Builds the real production image (apps/api/Dockerfile) so a
+      # broken production build (e.g. a dependency pnpm deploy can't
+      # resolve, a missing build-stage package) is caught here, not
+      # discovered at actual deploy time. No registry push — where
+      # images get published is a deploy-target decision (cloud
+      # provider, registry, credentials) nobody has made yet; see
+      # docs/technical-log/phase-7.md.
+      - name: Build production Docker image
+        run: docker build -f apps/api/Dockerfile -t dos-api:ci .
