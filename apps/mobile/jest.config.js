@@ -18,4 +18,5 @@ module.exports = {
     `node_modules/\\.pnpm/[^/]+/node_modules/(?!${reactNativePackages}/)`,
     `node_modules/(?!\\.pnpm/)(?!${reactNativePackages}/)`,
   ],
+  setupFiles: ['./jest.setup.js'],
 };
