@@ -5,6 +5,33 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added — Fase 8: Comercialización
+
+- Real billing portal in `apps/web` (`pages/BillingPage.tsx`): current
+  plan, Free/Pro/Business plan cards with limits, and a Stripe Checkout
+  upgrade flow — consuming the `modules/billing` endpoints built in
+  Fase 4, which had no UI consumer until now. Handles the checkout
+  success/canceled redirect (`?checkout=success|canceled`) and the `503`
+  no-Stripe-credentials-configured case inline.
+- Session restore across page reloads (`context/AuthContext.tsx`): a
+  silent `POST /auth/refresh` on app boot using the httpOnly refresh
+  cookie — `apps/web` previously lost its session on every reload.
+- Nested layout routing (`layouts/AppLayout.tsx`) with a Dashboard/
+  Billing nav and sign-out, replacing the flat route shell from Fase 2.
+- First test runner for `apps/web` (Vitest + `@testing-library/react`):
+  10 tests across the API client, session restore, and billing page's
+  formatting helpers.
+- Fixed a preexisting `apps/mobile` build regression (`TS2786` across
+  nearly every screen): `@react-native/typescript-config`'s `"jsx":
+  "react-native"` (classic transform) is incompatible with
+  `@types/react@19`'s module-scoped `JSX` namespace. Overrode to
+  `"jsx": "react-jsx"` in `apps/mobile/tsconfig.json`, matching what
+  `@react-native/babel-preset` already compiles to.
+
+This closes the original 8-phase roadmap (Estrategia → Base técnica →
+MVP operativo → Monetización → Expansión → App móvil → Escalabilidad →
+Comercialización). See `docs/technical-log/phase-8.md` for the full log.
+
 ### Added — Fase 7: Escalabilidad
 
 - Production Docker image for `apps/api` (`apps/api/Dockerfile`,

@@ -20,27 +20,47 @@ README) at the URL configured in `VITE_API_URL`.
 ```
 src/
   main.tsx            Entry point — mounts <App /> inside a BrowserRouter
-  App.tsx               Routing shell: /login and a protected / (dashboard)
+  App.tsx               Routing shell: /login, and a protected layout route
+                        (/ dashboard, /billing) behind RequireAuth
   context/
-    AuthContext.tsx      In-memory access-token state, login()/logout()
+    AuthContext.tsx      In-memory access-token state; restores a session
+                         on boot via a silent POST /auth/refresh (relies on
+                         the httpOnly refresh cookie), login()/logout()
+  layouts/
+    AppLayout.tsx          Header nav (Dashboard/Billing) + sign-out, wraps
+                           the authenticated routes via <Outlet/>
   api/
     client.ts             Typed fetch wrapper — attaches the access token,
                           sends credentials for the httpOnly refresh cookie
   pages/
     LoginPage.tsx           Functional login form
-    DashboardPage.tsx        Placeholder landing screen
+    DashboardPage.tsx        Landing screen (operational screens — clients,
+                             jobs, scheduling, staff — land in a later phase)
+    BillingPage.tsx           Current plan + Free/Pro/Business tiles, Stripe
+                              Checkout upgrade flow, and the checkout
+                              success/canceled redirect banners (Fase 8)
+  types/
+    api.ts                  Shared response types for the billing endpoints
 ```
 
-## Fase 2 scope note
+## Billing (Fase 8)
 
-This is a routing + API-client **scaffold**, not the finished product —
-per the roadmap, real screens for clients/jobs/scheduling/staff/billing
-land in Fase 5 (UX/UI work), and session persistence across page reloads,
-multi-organization selection UI, and refresh-on-401 resilience are called
-out as deferred in the relevant files' doc comments.
+`BillingPage` is a real consumer of the `modules/billing` API built in
+Fase 4 (`GET /organizations/me/subscription`, `GET /plans`,
+`POST /organizations/me/subscription/checkout`). Upgrading redirects to
+Stripe Checkout; `STRIPE_CHECKOUT_SUCCESS_URL`/`_CANCEL_URL` (see
+`apps/api/.env.example`) point back at `/billing?checkout=success|canceled`,
+which this same page renders as a dismissible banner. A 503 from the
+checkout endpoint (no Stripe credentials configured on the deployment) is
+shown inline rather than treated as a generic error.
+
+Not covered: a real end-to-end Stripe payment (no live Stripe test
+credentials exist in this project — same limitation documented for the
+Fase 4 checkout/webhook work).
 
 ## Scripts
 
 - `pnpm dev` — start the Vite dev server.
 - `pnpm build` — type-check and production build.
 - `pnpm lint` — lint this app.
+- `pnpm test` — run the Vitest suite (`jsdom`, `@testing-library/react`).
