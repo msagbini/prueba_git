@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { StaffProfile } from '@prisma/client';
 import { SAFE_USER_SELECT, type SafeUser } from '../../common/safe-user';
 import { toDateOrUndefined } from '../../common/to-date';
+import type { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { paginate, type PaginatedResult } from '../../common/pagination';
 import { TenantContextService } from '../../prisma/tenant-context.service';
 import { AuditLogWriterService } from '../audit-logs/audit-log-writer.service';
 import type { UpdateStaffDto } from './dto/update-staff.dto';
@@ -31,13 +33,21 @@ export class StaffService {
 
   /**
    * Lists records.
-   * @returns every staff profile in the caller's active organization
+   * @param pagination the requested page/pageSize
+   * @returns a page of staff profiles in the caller's active organization
    */
-  list(): Promise<StaffProfileWithUser[]> {
-    return this.tenantContext.client.staffProfile.findMany({
-      include: { membership: { select: { user: { select: SAFE_USER_SELECT } } } },
-      orderBy: { createdAt: 'asc' },
-    });
+  async list(pagination: PaginationQueryDto): Promise<PaginatedResult<StaffProfileWithUser>> {
+    const { page, pageSize } = pagination;
+    const [items, total] = await Promise.all([
+      this.tenantContext.client.staffProfile.findMany({
+        include: { membership: { select: { user: { select: SAFE_USER_SELECT } } } },
+        orderBy: { createdAt: 'asc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.tenantContext.client.staffProfile.count(),
+    ]);
+    return paginate(items, total, page, pageSize);
   }
 
   /**

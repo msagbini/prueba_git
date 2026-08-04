@@ -189,14 +189,14 @@ describe('business flows (e2e)', () => {
       .get('/staff')
       .set('Authorization', `Bearer ${ownerAccessToken}`)
       .expect(200);
-    expect(staffList.body).toHaveLength(1);
-    staffMembershipId = staffList.body[0].membershipId;
+    expect(staffList.body.items).toHaveLength(1);
+    staffMembershipId = staffList.body.items[0].membershipId;
 
     const jobsAsStaff = await request(server())
       .get('/jobs')
       .set('Authorization', `Bearer ${staffAccessToken}`)
       .expect(200);
-    expect(jobsAsStaff.body).toEqual([]);
+    expect(jobsAsStaff.body.items).toEqual([]);
   });
 
   it('shows the job to Staff only after assignment, and blocks Staff from managing it', async () => {
@@ -210,8 +210,8 @@ describe('business flows (e2e)', () => {
       .get('/jobs')
       .set('Authorization', `Bearer ${staffAccessToken}`)
       .expect(200);
-    expect(jobsAsStaff.body).toHaveLength(1);
-    expect(jobsAsStaff.body[0].id).toBe(jobAId);
+    expect(jobsAsStaff.body.items).toHaveLength(1);
+    expect(jobsAsStaff.body.items[0].id).toBe(jobAId);
 
     await request(server())
       .patch(`/jobs/${jobAId}`)
@@ -231,8 +231,8 @@ describe('business flows (e2e)', () => {
       .get('/jobs')
       .set('Authorization', `Bearer ${staffAccessToken}`)
       .expect(200);
-    expect(jobsAsStaff.body[0].client.name).toBe('Client A');
-    expect(jobsAsStaff.body[0].jobServices).toHaveLength(1);
+    expect(jobsAsStaff.body.items[0].client.name).toBe('Client A');
+    expect(jobsAsStaff.body.items[0].jobServices).toHaveLength(1);
   });
 
   it('lets assigned Staff clock in and out, but not on an unassigned or already-finished job', async () => {
@@ -321,8 +321,8 @@ describe('business flows (e2e)', () => {
       .set('Authorization', `Bearer ${clientPortalAccessToken}`)
       .expect(200);
     // Client A has one job (jobAId); Client B's job must not appear.
-    expect(jobsAsClient.body).toHaveLength(1);
-    expect(jobsAsClient.body[0].id).toBe(jobAId);
+    expect(jobsAsClient.body.items).toHaveLength(1);
+    expect(jobsAsClient.body.items[0].id).toBe(jobAId);
 
     await request(server())
       .post(`/jobs/${jobAId}/start`)
@@ -368,7 +368,7 @@ describe('business flows (e2e)', () => {
       .get('/invoices')
       .set('Authorization', `Bearer ${clientPortalAccessToken}`)
       .expect(200);
-    expect(invoicesAsClient.body.map((i: { id: string }) => i.id)).toEqual([invoiceId]);
+    expect(invoicesAsClient.body.items.map((i: { id: string }) => i.id)).toEqual([invoiceId]);
   });
 
   it('records every mutation above in the audit trail', async () => {
@@ -707,7 +707,7 @@ describe('business flows (e2e)', () => {
         .get('/staff')
         .set('Authorization', `Bearer ${reportsOwnerToken}`)
         .expect(200);
-      const membershipId = staffList.body[0].membershipId;
+      const membershipId = staffList.body.items[0].membershipId;
 
       await request(server())
         .post(`/jobs/${job.body.id}/assignments`)

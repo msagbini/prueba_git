@@ -55,6 +55,15 @@ export interface JobServiceLineItem {
   service: { id: string; name: string };
 }
 
+/** A page of results, as every DOS list endpoint (`GET /jobs`, etc.) returns since Fase 9's pagination pass. */
+export interface Paginated<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
 /** A job as returned by `GET /jobs`/`GET /jobs/:id` — see `modules/jobs/jobs.service.ts`'s `JOB_DETAILS_INCLUDE`. */
 export interface Job {
   id: string;

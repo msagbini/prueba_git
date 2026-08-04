@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, RoleCode, type Invoice, type InvoiceLineItem } from '@prisma/client';
 import { toDateOrUndefined } from '../../common/to-date';
+import type { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { paginate, type PaginatedResult } from '../../common/pagination';
 import { TenantContextService } from '../../prisma/tenant-context.service';
 import { AuditLogWriterService } from '../audit-logs/audit-log-writer.service';
 import type { CreateInvoiceDto } from './dto/create-invoice.dto';
@@ -38,13 +40,25 @@ export class InvoicesService {
   /**
    * Lists records.
    * @param caller the authenticated caller, for row-level visibility
-   * @returns invoices visible to the caller
+   * @param pagination the requested page/pageSize
+   * @returns a page of invoices visible to the caller
    */
-  async list(caller: InvoiceCaller): Promise<Invoice[]> {
-    return this.tenantContext.client.invoice.findMany({
-      where: await this.visibilityFilter(caller),
-      orderBy: { issueDate: 'desc' },
-    });
+  async list(
+    caller: InvoiceCaller,
+    pagination: PaginationQueryDto,
+  ): Promise<PaginatedResult<Invoice>> {
+    const where = await this.visibilityFilter(caller);
+    const { page, pageSize } = pagination;
+    const [items, total] = await Promise.all([
+      this.tenantContext.client.invoice.findMany({
+        where,
+        orderBy: { issueDate: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.tenantContext.client.invoice.count({ where }),
+    ]);
+    return paginate(items, total, page, pageSize);
   }
 
   /**

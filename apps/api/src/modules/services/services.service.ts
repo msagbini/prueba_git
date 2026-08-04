@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PricingType, type Service, type ServiceCategory } from '@prisma/client';
+import type { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { paginate, type PaginatedResult } from '../../common/pagination';
 import { TenantContextService } from '../../prisma/tenant-context.service';
 import { AuditLogWriterService } from '../audit-logs/audit-log-writer.service';
 import type { CreateServiceCategoryDto } from './dto/create-service-category.dto';
@@ -26,7 +28,10 @@ export class ServicesService {
   ) {}
 
   /**
-   * Lists categories.
+   * Lists categories. Not paginated — a service catalog's category list is
+   * organizational taxonomy (a handful of entries), not a growing
+   * transactional record like clients/jobs/invoices, so an unbounded list
+   * here doesn't carry the same risk.
    * @returns every service category in the caller's active organization
    */
   listCategories(): Promise<ServiceCategory[]> {
@@ -63,10 +68,20 @@ export class ServicesService {
 
   /**
    * Lists records.
-   * @returns every service in the caller's active organization
+   * @param pagination the requested page/pageSize
+   * @returns a page of services in the caller's active organization
    */
-  list(): Promise<Service[]> {
-    return this.tenantContext.client.service.findMany({ orderBy: { name: 'asc' } });
+  async list(pagination: PaginationQueryDto): Promise<PaginatedResult<Service>> {
+    const { page, pageSize } = pagination;
+    const [items, total] = await Promise.all([
+      this.tenantContext.client.service.findMany({
+        orderBy: { name: 'asc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.tenantContext.client.service.count(),
+    ]);
+    return paginate(items, total, page, pageSize);
   }
 
   /**

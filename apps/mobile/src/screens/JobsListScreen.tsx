@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { apiFetch } from '../api/client';
 import type { AppStackParamList } from '../navigation/RootNavigator';
-import type { Job } from '../types/api';
+import type { Job, Paginated } from '../types/api';
 
 type Props = NativeStackScreenProps<AppStackParamList, 'JobsList'>;
 
@@ -39,8 +39,11 @@ export function JobsListScreen({ navigation }: Props): React.JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const result = await apiFetch<Job[]>('/jobs');
-    setJobs(result);
+    // pageSize=100 (the API's max) rather than building pagination UI here:
+    // a single field-staff caller's assigned jobs realistically never
+    // approaches that in one screen. Revisit if that assumption breaks.
+    const result = await apiFetch<Paginated<Job>>('/jobs?pageSize=100');
+    setJobs(result.items);
   }, []);
 
   useFocusEffect(

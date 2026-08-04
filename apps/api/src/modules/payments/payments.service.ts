@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InvoiceStatus, Prisma, PaymentStatus, RoleCode, type Payment } from '@prisma/client';
+import type { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { paginate, type PaginatedResult } from '../../common/pagination';
 import { TenantContextService } from '../../prisma/tenant-context.service';
 import { AuditLogWriterService } from '../audit-logs/audit-log-writer.service';
 import type { CreatePaymentDto } from './dto/create-payment.dto';
@@ -33,13 +35,25 @@ export class PaymentsService {
   /**
    * Lists records.
    * @param caller the authenticated caller, for row-level visibility
-   * @returns payments visible to the caller
+   * @param pagination the requested page/pageSize
+   * @returns a page of payments visible to the caller
    */
-  async list(caller: PaymentCaller): Promise<Payment[]> {
-    return this.tenantContext.client.payment.findMany({
-      where: await this.visibilityFilter(caller),
-      orderBy: { createdAt: 'desc' },
-    });
+  async list(
+    caller: PaymentCaller,
+    pagination: PaginationQueryDto,
+  ): Promise<PaginatedResult<Payment>> {
+    const where = await this.visibilityFilter(caller);
+    const { page, pageSize } = pagination;
+    const [items, total] = await Promise.all([
+      this.tenantContext.client.payment.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.tenantContext.client.payment.count({ where }),
+    ]);
+    return paginate(items, total, page, pageSize);
   }
 
   /**

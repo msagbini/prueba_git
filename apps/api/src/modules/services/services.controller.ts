@@ -1,9 +1,20 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import type { AuthenticatedUser } from '../../common/types/authenticated-request';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { ServicesService } from './services.service';
 import { CreateServiceCategoryDto } from './dto/create-service-category.dto';
 import { CreateServiceDto } from './dto/create-service.dto';
@@ -45,12 +56,13 @@ export class ServicesController {
 
   /**
    * Lists records.
-   * @returns every service in the caller's active organization.
+   * @param pagination the requested page/pageSize
+   * @returns a page of services in the caller's active organization
    */
   @RequirePermissions('services.read')
   @Get('services')
-  list() {
-    return this.servicesService.list();
+  list(@Query() pagination: PaginationQueryDto) {
+    return this.servicesService.list(pagination);
   }
 
   /**

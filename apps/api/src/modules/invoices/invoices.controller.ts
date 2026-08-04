@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import type { AuthenticatedUser } from '../../common/types/authenticated-request';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { InvoicesService } from './invoices.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceDto } from './dto/update-invoice.dto';
@@ -24,12 +25,16 @@ export class InvoicesController {
   /**
    * Lists records.
    * @param user the authenticated caller
-   * @returns invoices visible to the caller.
+   * @param pagination the requested page/pageSize
+   * @returns a page of invoices visible to the caller
    */
   @RequirePermissions('invoices.read')
   @Get()
-  list(@CurrentUser() user: AuthenticatedUser) {
-    return this.invoicesService.list({ membershipId: user.membershipId, role: user.role });
+  list(@CurrentUser() user: AuthenticatedUser, @Query() pagination: PaginationQueryDto) {
+    return this.invoicesService.list(
+      { membershipId: user.membershipId, role: user.role },
+      pagination,
+    );
   }
 
   /**

@@ -13,6 +13,8 @@ import {
   type JobService as JobServiceRow,
 } from '@prisma/client';
 import { toDateOrUndefined } from '../../common/to-date';
+import type { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { paginate, type PaginatedResult } from '../../common/pagination';
 import { TenantContextService } from '../../prisma/tenant-context.service';
 import { AuditLogWriterService } from '../audit-logs/audit-log-writer.service';
 import { BillingService } from '../billing/billing.service';
@@ -73,14 +75,26 @@ export class JobsService {
   /**
    * Lists records.
    * @param caller the authenticated caller, for row-level visibility
-   * @returns jobs visible to the caller, with client/address/services details
+   * @param pagination the requested page/pageSize
+   * @returns a page of jobs visible to the caller, with client/address/services details
    */
-  async list(caller: JobCaller): Promise<JobWithDetails[]> {
-    return this.tenantContext.client.job.findMany({
-      where: { deletedAt: null, ...(await this.visibilityFilter(caller)) },
-      orderBy: { scheduledStart: 'asc' },
-      include: JOB_DETAILS_INCLUDE,
-    });
+  async list(
+    caller: JobCaller,
+    pagination: PaginationQueryDto,
+  ): Promise<PaginatedResult<JobWithDetails>> {
+    const where = { deletedAt: null, ...(await this.visibilityFilter(caller)) };
+    const { page, pageSize } = pagination;
+    const [items, total] = await Promise.all([
+      this.tenantContext.client.job.findMany({
+        where,
+        orderBy: { scheduledStart: 'asc' },
+        include: JOB_DETAILS_INCLUDE,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.tenantContext.client.job.count({ where }),
+    ]);
+    return paginate(items, total, page, pageSize);
   }
 
   /**

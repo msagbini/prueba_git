@@ -399,7 +399,22 @@ paths:
   /clients:
     get:
       operationId: ClientsController_list
-      parameters: []
+      parameters:
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: pageSize
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 25
+            type: number
       responses:
         '200':
           description: ''
@@ -542,7 +557,22 @@ paths:
   /services:
     get:
       operationId: ServicesController_list
-      parameters: []
+      parameters:
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: pageSize
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 25
+            type: number
       responses:
         '200':
           description: ''
@@ -621,7 +651,22 @@ paths:
   /jobs:
     get:
       operationId: JobsController_list
-      parameters: []
+      parameters:
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: pageSize
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 25
+            type: number
       responses:
         '200':
           description: ''
@@ -776,7 +821,22 @@ paths:
   /staff:
     get:
       operationId: StaffController_list
-      parameters: []
+      parameters:
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: pageSize
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 25
+            type: number
       responses:
         '200':
           description: ''
@@ -824,7 +884,22 @@ paths:
   /invoices:
     get:
       operationId: InvoicesController_list
-      parameters: []
+      parameters:
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: pageSize
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 25
+            type: number
       responses:
         '200':
           description: ''
@@ -910,7 +985,22 @@ paths:
   /payments:
     get:
       operationId: PaymentsController_list
-      parameters: []
+      parameters:
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: pageSize
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 25
+            type: number
       responses:
         '200':
           description: ''

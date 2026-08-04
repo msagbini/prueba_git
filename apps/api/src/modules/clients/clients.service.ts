@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Client, ClientAddress } from '@prisma/client';
+import type { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { paginate, type PaginatedResult } from '../../common/pagination';
 import { TenantContextService } from '../../prisma/tenant-context.service';
 import { AuditLogWriterService } from '../audit-logs/audit-log-writer.service';
 import { BillingService } from '../billing/billing.service';
@@ -30,13 +32,22 @@ export class ClientsService {
 
   /**
    * Lists records.
-   * @returns every non-deleted client in the caller's active organization
+   * @param pagination the requested page/pageSize
+   * @returns a page of non-deleted clients in the caller's active organization
    */
-  list(): Promise<Client[]> {
-    return this.tenantContext.client.client.findMany({
-      where: { deletedAt: null },
-      orderBy: { name: 'asc' },
-    });
+  async list(pagination: PaginationQueryDto): Promise<PaginatedResult<Client>> {
+    const where = { deletedAt: null };
+    const { page, pageSize } = pagination;
+    const [items, total] = await Promise.all([
+      this.tenantContext.client.client.findMany({
+        where,
+        orderBy: { name: 'asc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.tenantContext.client.client.count({ where }),
+    ]);
+    return paginate(items, total, page, pageSize);
   }
 
   /**
