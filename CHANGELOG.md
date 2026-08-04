@@ -5,6 +5,25 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added — Fase 7: Escalabilidad
+
+- Production Docker image for `apps/api` (`apps/api/Dockerfile`,
+  multi-stage, `pnpm deploy`-based) and a matching `.dockerignore`.
+  Resolves the argon2-native-bindings-against-the-deploy-image open
+  item flagged in `docs/architecture/auth.md`: a real hash/verify round
+  trip was run directly against the deployed package's installed
+  argon2 module.
+- Production hardening for `apps/api`: `helmet` (security headers),
+  `compression`, per-IP rate limiting (`@nestjs/throttler`, 100
+  req/60s), and `app.enableShutdownHooks()` so the database connection
+  closes cleanly on `SIGTERM` instead of the process dying mid-request.
+- CI now builds the production Docker image on every push (no registry
+  push yet — no deploy target has been decided).
+
+This sandbox's egress policy blocks Docker Hub, so `docker build`
+itself could not be run here — see `docs/technical-log/phase-7.md` for
+exactly what was and wasn't verified, and how.
+
 ### Added — Fase 6: App móvil
 
 - Real field-staff screens for `apps/mobile` (React Native bare): sign

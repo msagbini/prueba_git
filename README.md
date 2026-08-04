@@ -8,24 +8,29 @@ maintenance, landscaping and general field services.
 
 ## Status
 
-**Fase 6 — App móvil: complete**, awaiting approval to start Fase 7.
-`apps/mobile` now has real field-staff screens: sign in (with
-multi-organization selection and Keychain/Keystore-backed session
-persistence), an assigned-jobs list, and a job detail screen with
-client/address/service info and clock in/out actions — unverified
-against a real device/simulator (no Android SDK/Xcode in this
-container), but the TypeScript, Metro bundle, and screen/API-client
-logic are genuinely tested. `apps/api`'s Fase 5 reporting endpoints
-(revenue, jobs by status, staff performance, top clients, outstanding
-invoices) and Fase 4 monetization (tiered plans with usage-limit
-enforcement, Stripe Checkout/webhooks — the latter still unverified
-against Stripe's own servers pending real test credentials) remain in
-place. The Fase 3 business modules (clients, services, staff,
-jobs/scheduling, invoicing, payments) remain fully implemented — real
-CRUD, permission-scoped RBAC, row-level visibility, and an audit trail
-— behind the same multi-tenant architecture built in Fase 2. `apps/web`
+**Fase 7 — Escalabilidad: complete**, awaiting approval to start Fase 8.
+`apps/api` now has a production Docker image (multi-stage, `pnpm
+deploy`-based — see `apps/api/Dockerfile`), production hardening
+(security headers, compression, per-IP rate limiting, graceful
+shutdown, all live-verified), and a CI step that builds the image on
+every push. This sandbox's egress policy blocks Docker Hub, so the
+build itself is unverified here (its core mechanism and its one
+genuinely uncertain native dependency, argon2, were verified directly
+without Docker) — see `docs/technical-log/phase-7.md` for exactly what
+is and isn't confirmed. `apps/mobile` (Fase 6) has real field-staff
+screens: sign in (multi-organization selection, Keychain/Keystore
+session persistence), an assigned-jobs list, and a job detail screen
+with clock in/out — still unverified against a real device/simulator.
+`apps/api`'s Fase 5 reporting endpoints and Fase 4 monetization (tiered
+plans, Stripe Checkout/webhooks — the latter unverified against
+Stripe's own servers pending real test credentials) remain in place.
+The Fase 3 business modules (clients, services, staff, jobs/scheduling,
+invoicing, payments) remain fully implemented — real CRUD,
+permission-scoped RBAC, row-level visibility, and an audit trail —
+behind the same multi-tenant architecture built in Fase 2. `apps/web`
 is still a routing/navigation scaffold. See
-[`docs/technical-log/phase-6.md`](docs/technical-log/phase-6.md) (and
+[`docs/technical-log/phase-7.md`](docs/technical-log/phase-7.md) (and
+[`phase-6.md`](docs/technical-log/phase-6.md),
 [`phase-5.md`](docs/technical-log/phase-5.md),
 [`phase-4.md`](docs/technical-log/phase-4.md),
 [`phase-3.md`](docs/technical-log/phase-3.md),
