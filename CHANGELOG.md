@@ -5,6 +5,34 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added — Fase 6: App móvil
+
+- Real field-staff screens for `apps/mobile` (React Native bare): sign
+  in (with multi-organization selection), a list of the caller's
+  assigned jobs, and a job detail screen with client/address/services
+  and "Start job"/"Complete job" (clock in/out) actions.
+- Session persistence via `react-native-keychain` (iOS Keychain /
+  Android Keystore), per the mobile token-storage design in
+  `docs/architecture/auth.md` — session restore on launch rotates the
+  stored refresh token rather than trusting a possibly-expired access
+  token.
+- `apps/api`: `GET /jobs`/`GET /jobs/:id` now embed client contact
+  info, the service address, and billed services (Staff holds
+  `jobs.read` but not `clients.read`/`services.read`, so this was the
+  only way a Staff caller could learn who a job is for or where to
+  go). New `POST /jobs/:id/start`/`/complete` let the job's assigned
+  Staff member (or Owner/Admin/Dispatcher) transition it through
+  `IN_PROGRESS`/`COMPLETED` without needing the broader `jobs.manage`
+  permission.
+- Jest test infrastructure for `apps/mobile` (manual mocks for
+  `react-native-keychain` and `react-native-safe-area-context`, needed
+  since neither has a native module under Jest).
+
+This container has no Android SDK or Xcode — native builds and the
+real Keychain/Keystore round trip are unverified pending a real
+device/simulator; see `docs/technical-log/phase-6.md` for exactly
+what is and isn't confirmed.
+
 ### Added — Fase 5: Expansión (Reportes y Analytics)
 
 - Five read-only report endpoints (`modules/reports`), gated by a new

@@ -8,23 +8,26 @@ maintenance, landscaping and general field services.
 
 ## Status
 
-**Fase 5 — Expansión (Reportes y Analytics): complete**, awaiting
-approval to start Fase 6. DOS now has five operational/financial report
-endpoints (revenue, jobs by status, staff performance, top clients,
-outstanding invoices), Owner/Admin-only, built entirely on data the Fase
-3 business modules already write. Fase 4 (Monetización) remains in
-place: tiered plans (Free/Pro/Business) with real usage-limit
-enforcement, and a real Stripe Checkout/webhook integration — unverified
-against Stripe's own servers pending real test credentials, but with
-every other code path (validation, config-missing handling, webhook
-signature verification) genuinely tested. The API's Fase 3 business
-modules (clients, services, staff, jobs/scheduling, invoicing, payments)
-remain fully implemented — real CRUD, permission-scoped RBAC, row-level
-visibility (Staff/Client), and an audit trail — behind the same
-multi-tenant architecture built in Fase 2. The web and mobile apps are
-still routing/navigation scaffolds; real screens land in a later phase.
-See [`docs/technical-log/phase-5.md`](docs/technical-log/phase-5.md)
-(and [`phase-4.md`](docs/technical-log/phase-4.md),
+**Fase 6 — App móvil: complete**, awaiting approval to start Fase 7.
+`apps/mobile` now has real field-staff screens: sign in (with
+multi-organization selection and Keychain/Keystore-backed session
+persistence), an assigned-jobs list, and a job detail screen with
+client/address/service info and clock in/out actions — unverified
+against a real device/simulator (no Android SDK/Xcode in this
+container), but the TypeScript, Metro bundle, and screen/API-client
+logic are genuinely tested. `apps/api`'s Fase 5 reporting endpoints
+(revenue, jobs by status, staff performance, top clients, outstanding
+invoices) and Fase 4 monetization (tiered plans with usage-limit
+enforcement, Stripe Checkout/webhooks — the latter still unverified
+against Stripe's own servers pending real test credentials) remain in
+place. The Fase 3 business modules (clients, services, staff,
+jobs/scheduling, invoicing, payments) remain fully implemented — real
+CRUD, permission-scoped RBAC, row-level visibility, and an audit trail
+— behind the same multi-tenant architecture built in Fase 2. `apps/web`
+is still a routing/navigation scaffold. See
+[`docs/technical-log/phase-6.md`](docs/technical-log/phase-6.md) (and
+[`phase-5.md`](docs/technical-log/phase-5.md),
+[`phase-4.md`](docs/technical-log/phase-4.md),
 [`phase-3.md`](docs/technical-log/phase-3.md),
 [`phase-2.md`](docs/technical-log/phase-2.md) for prior phases) for the
 full log, and
