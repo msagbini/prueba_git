@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
+import { Throttle } from '@nestjs/throttler';
 import { RoleCode } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
@@ -36,6 +37,16 @@ import { VerifyEmailDto } from './dto/verify-email.dto';
 import type { IssuedTokens, LoginResponse, MeResult, InvitationPreview } from './auth.types';
 
 const REFRESH_TOKEN_COOKIE = 'refreshToken';
+
+/**
+ * A stricter per-IP limit than the app-wide default (100 req/60s, set in
+ * `app.module.ts`) for the three credential-guessing-shaped routes:
+ * login, signup, and forgot-password. 100/min is generous enough for
+ * general API traffic but does little against a targeted password-
+ * guessing attempt; 10/min still comfortably covers a real user
+ * mistyping a password a few times.
+ */
+const CREDENTIAL_GUESS_THROTTLE = { default: { limit: 10, ttl: 60_000 } };
 
 /**
  * Authentication, session and invitation endpoints. See
@@ -63,6 +74,7 @@ export class AuthController {
    * @returns the newly issued access/refresh tokens
    */
   @Public()
+  @Throttle(CREDENTIAL_GUESS_THROTTLE)
   @Post('auth/signup')
   async signup(
     @Body() dto: SignupDto,
@@ -80,6 +92,7 @@ export class AuthController {
    * @returns tokens, or the organization-selection step
    */
   @Public()
+  @Throttle(CREDENTIAL_GUESS_THROTTLE)
   @Post('auth/login')
   async login(
     @Body() dto: LoginDto,
@@ -194,6 +207,7 @@ export class AuthController {
    * @param dto the account email to send a reset link to, if it exists
    */
   @Public()
+  @Throttle(CREDENTIAL_GUESS_THROTTLE)
   @Post('auth/forgot-password')
   @HttpCode(HttpStatus.NO_CONTENT)
   async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<void> {
