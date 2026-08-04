@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppConfigModule } from './config/config.module';
 import { HealthModule } from './health/health.module';
@@ -31,6 +32,9 @@ import { ReportsModule } from './modules/reports/reports.module';
     // single misbehaving or malicious client — not a tuned production
     // number, just a sane default; revisit with real traffic data.
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    // Powers RecurringJobsService's @Cron handler (JobsModule) — see
+    // there for why a background job needs its own tenant-enumeration path.
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
     OrganizationsModule,
