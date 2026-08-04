@@ -83,3 +83,23 @@ export interface Service {
   basePrice: string;
   isActive: boolean;
 }
+
+export interface SafeUser {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  status: string;
+}
+
+export type StaffStatus = 'ACTIVE' | 'INACTIVE';
+
+export interface StaffProfile {
+  id: string;
+  employeeCode: string | null;
+  hourlyRate: string | null;
+  hireDate: string | null;
+  status: StaffStatus;
+  membership: { user: SafeUser };
+}
