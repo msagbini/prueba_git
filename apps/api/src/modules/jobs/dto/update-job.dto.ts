@@ -24,6 +24,20 @@ export class UpdateJobDto {
   @IsDateString()
   scheduledEnd?: string;
 
+  @ApiPropertyOptional({
+    description: 'When work actually started — distinct from the scheduled time.',
+  })
+  @IsOptional()
+  @IsDateString()
+  actualStart?: string;
+
+  @ApiPropertyOptional({
+    description: 'When work actually ended — distinct from the scheduled time.',
+  })
+  @IsOptional()
+  @IsDateString()
+  actualEnd?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

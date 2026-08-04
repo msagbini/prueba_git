@@ -13,6 +13,12 @@ caller only ever sees their own jobs.
 the service's current `basePrice` into `unitPriceSnapshot` so later
 catalog price changes don't retroactively change an already-booked job.
 
+`PATCH /jobs/:id` also accepts `actualStart`/`actualEnd` (distinct from
+`scheduledStart`/`scheduledEnd`) — when work actually happened, as
+opposed to when it was planned. These existed in the schema since Fase 2
+but had no way to be set until Fase 5, when `modules/reports`'
+staff-performance report needed them for "hours worked".
+
 | Method & path                | Auth                    | Notes                                    |
 | ---------------------------- | ----------------------- | ---------------------------------------- |
 | `GET /jobs`                  | Required, `jobs.read`   | Staff: own assignments; Client: own jobs |

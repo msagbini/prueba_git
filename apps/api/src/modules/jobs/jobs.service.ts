@@ -135,6 +135,8 @@ export class JobsService {
         serviceAddressId: dto.serviceAddressId,
         scheduledStart: toDateOrUndefined(dto.scheduledStart),
         scheduledEnd: toDateOrUndefined(dto.scheduledEnd),
+        actualStart: toDateOrUndefined(dto.actualStart),
+        actualEnd: toDateOrUndefined(dto.actualEnd),
         notes: dto.notes,
       },
     });

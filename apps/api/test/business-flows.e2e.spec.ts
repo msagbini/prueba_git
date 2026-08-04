@@ -569,4 +569,166 @@ describe('business flows (e2e)', () => {
       expect(sub.body.status).toBe('CANCELED');
     });
   });
+
+  describe('Reports', () => {
+    // A dedicated organization with one fully-worked-through job/invoice/
+    // payment/staff-assignment, so the report assertions below check exact
+    // numbers instead of just "some data came back".
+    let reportsOwnerToken: string;
+    let reportsStaffToken: string;
+    let reportsClientId: string;
+
+    beforeAll(async () => {
+      const signup = await request(server())
+        .post('/auth/signup')
+        .send({
+          organizationName: 'Reports Test Co',
+          industryVerticalCode: 'CLEANING',
+          ownerEmail: `reports-owner-${runId}@e2e-test.local`,
+          ownerFirstName: 'Rep',
+          ownerLastName: 'Orts',
+          password: 'Sup3rSecret!23',
+        })
+        .expect(201);
+      reportsOwnerToken = signup.body.accessToken;
+
+      const client = await request(server())
+        .post('/clients')
+        .set('Authorization', `Bearer ${reportsOwnerToken}`)
+        .send({ name: 'Acme Corp', type: 'COMMERCIAL' })
+        .expect(201);
+      reportsClientId = client.body.id;
+
+      const service = await request(server())
+        .post('/services')
+        .set('Authorization', `Bearer ${reportsOwnerToken}`)
+        .send({ name: 'Deep Clean', pricingType: 'FIXED', basePrice: 200 })
+        .expect(201);
+
+      const job = await request(server())
+        .post('/jobs')
+        .set('Authorization', `Bearer ${reportsOwnerToken}`)
+        .send({ clientId: reportsClientId })
+        .expect(201);
+
+      await request(server())
+        .post(`/jobs/${job.body.id}/services`)
+        .set('Authorization', `Bearer ${reportsOwnerToken}`)
+        .send({ serviceId: service.body.id, quantity: 1 })
+        .expect(201);
+
+      await request(server())
+        .patch(`/jobs/${job.body.id}`)
+        .set('Authorization', `Bearer ${reportsOwnerToken}`)
+        .send({
+          status: 'COMPLETED',
+          actualStart: '2026-08-01T09:00:00.000Z',
+          actualEnd: '2026-08-01T12:00:00.000Z',
+        })
+        .expect(200);
+
+      const invoice = await request(server())
+        .post('/invoices')
+        .set('Authorization', `Bearer ${reportsOwnerToken}`)
+        .send({ clientId: reportsClientId, issueDate: '2026-08-01', dueDate: '2026-08-15' })
+        .expect(201);
+
+      await request(server())
+        .post(`/invoices/${invoice.body.id}/line-items`)
+        .set('Authorization', `Bearer ${reportsOwnerToken}`)
+        .send({ description: 'Deep clean', quantity: 1, unitPrice: 200 })
+        .expect(201);
+
+      // A partial payment (150 of 200) — exercises both revenue and the
+      // outstanding-invoices balance in the same fixture.
+      await request(server())
+        .post('/payments')
+        .set('Authorization', `Bearer ${reportsOwnerToken}`)
+        .send({ invoiceId: invoice.body.id, amount: 150, method: 'CARD' })
+        .expect(201);
+
+      await request(server())
+        .post('/organizations/me/invitations')
+        .set('Authorization', `Bearer ${reportsOwnerToken}`)
+        .send({ email: `reports-staff-${runId}@e2e-test.local`, roleCode: 'STAFF' })
+        .expect(204);
+      const accept = await request(server())
+        .post(`/invitations/${capturedInvitationToken}/accept`)
+        .send({ firstName: 'Stan', lastName: 'Staffer', password: 'Sup3rSecret!23' })
+        .expect(201);
+      reportsStaffToken = accept.body.accessToken;
+
+      const staffList = await request(server())
+        .get('/staff')
+        .set('Authorization', `Bearer ${reportsOwnerToken}`)
+        .expect(200);
+      const membershipId = staffList.body[0].membershipId;
+
+      await request(server())
+        .post(`/jobs/${job.body.id}/assignments`)
+        .set('Authorization', `Bearer ${reportsOwnerToken}`)
+        .send({ membershipId })
+        .expect(201);
+    });
+
+    const range = '?from=2026-07-01T00:00:00.000Z&to=2026-08-10T00:00:00.000Z';
+
+    it('reports revenue for the completed payment, bucketed by day', async () => {
+      const res = await request(server())
+        .get(`/reports/revenue${range}`)
+        .set('Authorization', `Bearer ${reportsOwnerToken}`)
+        .expect(200);
+      expect(res.body.totalRevenue).toBe('150');
+      expect(res.body.buckets).toHaveLength(1);
+      expect(res.body.buckets[0].revenue).toBe('150');
+    });
+
+    it('summarizes jobs by status', async () => {
+      const res = await request(server())
+        .get(`/reports/jobs-summary${range}`)
+        .set('Authorization', `Bearer ${reportsOwnerToken}`)
+        .expect(200);
+      expect(res.body.totalJobs).toBe(1);
+      expect(res.body.byStatus.COMPLETED).toBe(1);
+    });
+
+    it('reports staff performance with jobs completed and hours worked', async () => {
+      const res = await request(server())
+        .get(`/reports/staff-performance${range}`)
+        .set('Authorization', `Bearer ${reportsOwnerToken}`)
+        .expect(200);
+      expect(res.body.staff).toHaveLength(1);
+      expect(res.body.staff[0].name).toBe('Stan Staffer');
+      expect(res.body.staff[0].jobsCompleted).toBe(1);
+      expect(res.body.staff[0].hoursWorked).toBe(3);
+    });
+
+    it('ranks the client by revenue', async () => {
+      const res = await request(server())
+        .get(`/reports/top-clients${range}`)
+        .set('Authorization', `Bearer ${reportsOwnerToken}`)
+        .expect(200);
+      expect(res.body.clients).toHaveLength(1);
+      expect(res.body.clients[0].clientId).toBe(reportsClientId);
+      expect(res.body.clients[0].revenue).toBe('150');
+      expect(res.body.clients[0].jobCount).toBe(1);
+    });
+
+    it('reports the outstanding balance on the partially-paid invoice', async () => {
+      const res = await request(server())
+        .get('/reports/outstanding-invoices')
+        .set('Authorization', `Bearer ${reportsOwnerToken}`)
+        .expect(200);
+      expect(res.body.outstandingCount).toBe(1);
+      expect(res.body.outstandingTotal).toBe('50');
+      expect(res.body.overdueCount).toBe(0);
+    });
+
+    it('rejects a non-Owner/Admin caller', async () => {
+      await request(server())
+        .get('/reports/revenue')
+        .set('Authorization', `Bearer ${reportsStaffToken}`)
+        .expect(403);
+    });
+  });
 });

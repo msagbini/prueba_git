@@ -929,6 +929,127 @@ paths:
         - plans
       security:
         - bearer: []
+  /reports/revenue:
+    get:
+      operationId: ReportsController_getRevenue
+      parameters:
+        - name: from
+          required: false
+          in: query
+          description: Start of the range (inclusive), ISO 8601.
+          schema:
+            type: string
+        - name: to
+          required: false
+          in: query
+          description: End of the range (exclusive), ISO 8601.
+          schema:
+            type: string
+        - name: granularity
+          required: false
+          in: query
+          schema:
+            default: day
+            enum:
+              - day
+              - week
+              - month
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - reports
+      security:
+        - bearer: []
+  /reports/jobs-summary:
+    get:
+      operationId: ReportsController_getJobsSummary
+      parameters:
+        - name: from
+          required: false
+          in: query
+          description: Start of the range (inclusive), ISO 8601.
+          schema:
+            type: string
+        - name: to
+          required: false
+          in: query
+          description: End of the range (exclusive), ISO 8601.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - reports
+      security:
+        - bearer: []
+  /reports/staff-performance:
+    get:
+      operationId: ReportsController_getStaffPerformance
+      parameters:
+        - name: from
+          required: false
+          in: query
+          description: Start of the range (inclusive), ISO 8601.
+          schema:
+            type: string
+        - name: to
+          required: false
+          in: query
+          description: End of the range (exclusive), ISO 8601.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags:
+        - reports
+      security:
+        - bearer: []
+  /reports/top-clients:
+    get:
+      operationId: ReportsController_getTopClients
+      parameters:
+        - name: from
+          required: false
+          in: query
+          description: Start of the range (inclusive), ISO 8601.
+          schema:
+            type: string
+        - name: to
+          required: false
+          in: query
+          description: End of the range (exclusive), ISO 8601.
+          schema:
+            type: string
+        - name: limit
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 10
+            type: number
+      responses:
+        '200':
+          description: ''
+      tags:
+        - reports
+      security:
+        - bearer: []
+  /reports/outstanding-invoices:
+    get:
+      operationId: ReportsController_getOutstandingInvoices
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+        - reports
+      security:
+        - bearer: []
   /health:
     get:
       operationId: HealthController_check
@@ -1287,6 +1408,12 @@ components:
           type: string
         scheduledEnd:
           type: string
+        actualStart:
+          type: string
+          description: When work actually started — distinct from the scheduled time.
+        actualEnd:
+          type: string
+          description: When work actually ended — distinct from the scheduled time.
         notes:
           type: string
     CreateJobAssignmentDto:

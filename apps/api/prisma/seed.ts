@@ -30,6 +30,11 @@ const PERMISSIONS = [
   { code: 'payments.manage', module: 'payments', description: 'Record and manage payments' },
   { code: 'payments.read', module: 'payments', description: 'View payments' },
   { code: 'audit_logs.read', module: 'audit_logs', description: 'View the audit log' },
+  {
+    code: 'reports.read',
+    module: 'reports',
+    description: 'View operational and financial reports',
+  },
 ] as const;
 
 /** Which permission codes each system role grants, per the RBAC matrix in docs/architecture/auth.md. */

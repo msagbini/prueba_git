@@ -16,6 +16,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { PlansModule } from './modules/plans/plans.module';
 import { BillingModule } from './modules/billing/billing.module';
+import { ReportsModule } from './modules/reports/reports.module';
 
 /** Root application module — wires together config, infrastructure and feature modules. */
 @Module({
@@ -36,6 +37,7 @@ import { BillingModule } from './modules/billing/billing.module';
     AuditLogsModule,
     PlansModule,
     BillingModule,
+    ReportsModule,
     HealthModule,
   ],
 })
