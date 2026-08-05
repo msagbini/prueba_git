@@ -31,8 +31,7 @@ function makeJob(overrides: Partial<Job> = {}): Job {
       {
         id: 'js1',
         service: { id: 's1', name: 'Deep clean' },
-        quantity: 1,
-        unitPriceSnapshot: '100',
+        quantity: '1',
       },
     ],
     assignments: [],

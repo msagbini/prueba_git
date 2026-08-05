@@ -1279,17 +1279,144 @@ test:coverage` (solo reporte, sin gate) después de la suite normal,
   normal (`pnpm run test`, sin `--coverage`) no cambió de
   comportamiento, el gate solo corre en el script dedicado y en CI.
 
-**Fase 9 (incluyendo este addendum) completa.** Como en el cierre de
-Fase 8: no hay una fase siguiente definida en ningún documento del
+### Cobertura de tests: cierre de la brecha en `apps/web`
+
+El addendum anterior dejó `apps/web` deliberadamente sin gate de
+cobertura, documentando que subirlo de forma significativa
+"requeriría escribir tests de componente para prácticamente toda la
+capa de páginas — un esfuerzo bastante más grande que 'conectar la
+config de cobertura'". Este addendum es exactamente ese esfuerzo:
+tests de RTL/Vitest para cada página y componente compartido que
+antes no tenía ninguno — `LoginPage`, `ForgotPasswordPage`,
+`ResetPasswordPage`, `VerifyEmailPage`, `AcceptInvitationPage`,
+`DashboardPage`, `ClientsPage`, `ServicesPage`, `StaffPage`,
+`JobsPage`, `InvoicesPage`, `MyJobsPage`, `MyInvoicesPage`,
+`BillingPage` (que solo tenía tests de sus funciones puras
+`formatPrice`/`formatLimit`, ahora también de la página completa:
+banners de checkout, error 503/403, redirect a Stripe), `App.tsx`
+(el routing raíz — `RequireAuth`, redirect a `/login`, el layout
+compartido detrás de rutas autenticadas, la diferencia de shortcuts
+por rol), `AppLayout`, `NotificationBell`, `Modal`, `Field`,
+`Pagination`, `Button`, `AuthCard`, y `JobsCalendarView` (incluyendo
+drag-and-drop nativo de reprogramación).
+
+**Cobertura medida, antes/después:**
+
+| Métrica    | Antes (addendum anterior) | Después |
+| ---------- | ------------------------- | ------- |
+| Statements | 6.48%                     | 84.8%   |
+| Branches   | 5.52%                     | 77.53%  |
+| Functions  | — (no medida)             | 76.27%  |
+| Lines      | — (no medida)             | 88.23%  |
+
+**Threshold real, con la misma disciplina de falsabilidad que
+`apps/api`:** `vite.config.ts` ahora fija
+`test.coverage.thresholds` en `{ statements: 82, branches: 75,
+functions: 73, lines: 85 }` — unos puntos por debajo del baseline
+medido arriba, mismo margen que el patrón ya usado en
+`jest.config.js`. Verificado que el gate frena algo de verdad: se
+subieron los cuatro umbrales a 99% temporalmente, `pnpm run
+test:coverage` falló con exit code 1 y un mensaje `ERROR: Coverage
+for <métrica> (X%) does not meet global threshold (99%)` por cada
+una de las cuatro, y se revirtió a los valores reales. CI
+(`.github/workflows/ci.yml`) pasó de "Web test coverage (reporting
+only, not yet gated)" a "Web test coverage (enforced)" — mismo
+tratamiento que ya tenía `apps/api`.
+
+**Un bug real de la aplicación, encontrado escribiendo el test de
+`ForgotPasswordPage`:** el `try { await apiFetch(...) } finally
+{...}` no tenía `catch`. La intención (documentada en un comentario
+ya existente) era "mostrar siempre el mismo resultado, éxito o
+fallo, igual que el propio comportamiento de la API de nunca revelar
+si la dirección existe" — pero sin `catch`, una petición fallida
+seguía propagándose como una promise rejection no manejada fuera del
+handler de React en vez de ser absorbida silenciosamente. Esto no
+rompía la UI (React no tiene un error boundary para rejections no
+capturadas en un handler de evento), pero ahora que `apps/web` tiene
+el SDK de Sentry conectado (ver el cierre del addendum de
+observabilidad más arriba en este documento), una unhandled
+rejection real se habría reportado a Sentry como si fuera un error
+genuino de la aplicación cada vez que un usuario pidiera un reset de
+password y la API fallara — ruido falso en el canal de errores de
+producción. Corregido con un `catch {}` vacío explícito. Se revisó
+(por grep) el resto de `apps/web/src/pages/*.tsx` para el mismo
+patrón de `finally` sin `catch` — este fue el único caso.
+
+**Notas de infraestructura de test (no son bugs de la app, son
+límites de jsdom que hubo que rodear):**
+
+- `HTMLDialogElement.prototype.showModal`/`.close` no existen en
+  jsdom (`Modal.tsx` depende de ambos) — polyfill agregado una sola
+  vez en `src/test-setup.ts`, no por archivo de test, porque
+  cualquier componente futuro basado en `<dialog>` pisaría el mismo
+  hueco.
+- `new Response(blob, ...)` con un `Blob` global de jsdom rompe
+  dentro de `response.blob()` con `object.stream is not a function`
+  — un gap cross-realm de jsdom. Los mocks de descarga de PDF usan un
+  body de tipo `string` en vez de `Blob`; `.blob()` funciona igual
+  sobre un `Response` con body de texto.
+- `vi.stubGlobal('URL', { ...URL, createObjectURL: ... })` rompe:
+  esparcir la clase `URL` en un objeto plano le hace perder su
+  identidad de constructor, y cualquier `new URL(...)` interno deja
+  de funcionar. Se asignan `URL.createObjectURL`/`URL.revokeObjectURL`
+  directamente como propiedades, sin reemplazar el global.
+- `vi.useFakeTimers()` combinado con `waitFor()` de Testing Library
+  hace deadlock (timeout de 5000ms en cada assertion): `waitFor` usa
+  `setTimeout` real internamente para su polling, y los fake timers
+  lo congelan. Los tests dependientes de fecha (`JobsCalendarView`)
+  evitan controlar el reloj del todo — en su lugar, el archivo de
+  test espeja las mismas funciones de date-math del componente
+  (`mondayOf`, `addDays`) para calcular los valores esperados contra
+  la fecha real, sin necesitar `Date` mockeado.
+- El modal de este proyecto (`components/ui/Modal.tsx`) usa
+  `<dialog>` siempre montado en el DOM — abrir/cerrar solo togglea el
+  atributo `open` nativo, nunca desmonta el JSX. Esto significa que
+  el texto dentro de un formulario de modal (opciones de `<select>`,
+  labels de checkbox, párrafos estáticos) siempre está presente en
+  `document.body`, incluso con el modal cerrado, y puede colisionar
+  con texto idéntico en otra parte de la página. Resuelto acotando
+  las queries con `within(screen.getByRole('table'))` (o `within` del
+  `<main>`/diálogo específico), o con `getAllByText(...)` + longitud
+  esperada cuando ambas coincidencias son legítimas (ej. un header de
+  columna y un badge de estado comparten la palabra "Scheduled").
+
+#### Verificación de este addendum
+
+- `pnpm --filter web run test:coverage`: 27 archivos / 139 tests
+  verdes, umbrales cumplidos con margen real.
+- Falsabilidad del gate confirmada (ver arriba): sube a 99% y falla
+  en las cuatro métricas con el mensaje esperado; baja a los valores
+  reales y pasa.
+- `pnpm turbo run lint build test --force`: `apps/web` (lint, build,
+  test) y `apps/mobile` verdes. `apps/api` falla en este entorno
+  porque no hay Postgres corriendo en este sandbox concreto — una
+  limitación del entorno de esta sesión, no una regresión de este
+  cambio (los tests de `apps/api` no fueron tocados en este
+  addendum).
+- El `tsc -b` de `pnpm --filter web run build` encontró y forzó a
+  corregir tres errores de tipos reales en los tests nuevos que
+  `vitest run` (transformación vía esbuild, más permisiva) no había
+  señalado: uso de `Buffer` (API de Node, no disponible en el target
+  de browser de este proyecto — reemplazado por `btoa`), una
+  reasignación directa de `window.location` que el tipo `string &
+Location` de `lib.dom.d.ts` no permite (reemplazada por
+  `Object.defineProperty`), y un fixture de `JobServiceLine` con un
+  campo inventado (`unitPriceSnapshot`, que no existe en
+  `types/api.ts`) y `quantity` tipado como `number` en vez de
+  `string`. Ninguno de los tres era un bug de la aplicación —los tres
+  eran errores en el propio código de test— pero confirma que
+  `pnpm turbo run ... build ...` es una verificación necesaria además
+  de `vitest run`, no redundante con ella.
+
+**Fase 9 (incluyendo todos sus addenda) completa.** Como en el cierre
+de Fase 8: no hay una fase siguiente definida en ningún documento del
 proyecto. De la lista de brechas deliberadas, quedan: cámara en
 mobile (bloqueada, sin dispositivo/emulador en este entorno), la
 actualización mayor de `fast-xml-parser` dentro del toolchain de
 Android de RN (única vulnerabilidad de dependencias restante en todo
-el monorepo), la race angosta de recargas `goto()` en rápida
+el monorepo), y la race angosta de recargas `goto()` en rápida
 sucesión (fuera de alcance porque requiere tocar la detección de
-reuso de tokens del servidor), y la cobertura de tests de la capa de
-páginas de `apps/web` (documentada arriba — un esfuerzo de escritura
-de tests considerablemente más grande que cualquier otro punto de
-esta lista, pendiente de que el stakeholder decida si vale la pena
-antes de emprenderlo). Cualquier dirección posterior necesita alcance
-definido por el stakeholder.
+reuso de tokens del servidor). La cobertura de tests de la capa de
+páginas de `apps/web`, que era el último punto de esta lista, quedó
+cerrada en este addendum. Cualquier dirección posterior necesita
+alcance definido por el stakeholder.

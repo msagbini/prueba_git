@@ -72,20 +72,15 @@ jobs:
       - name: Test
         run: pnpm turbo run test
 
-      # apps/api's coverage floor is a real regression guard (set at its
-      # measured baseline — see jest.config.js) and fails the build if
-      # crossed. apps/web's isn't gated the same way: coverage there sits
-      # around 6% (only pure logic and a couple of components are
-      # unit-tested; the page layer has none), so a threshold would be
-      # either meaningless at that floor or would require a much larger
-      # test-writing effort than "wire up coverage" — see
-      # docs/technical-log/phase-9.md. This still runs to publish the
-      # report as a build artifact, just without `--coverage`-driven
-      # failure.
+      # Both apps' coverage floors are real regression guards, set at their
+      # measured baselines (see jest.config.js and vite.config.ts) and fail
+      # the build if crossed. apps/web's threshold was added once the
+      # page/component test suite closed its earlier ~6.5% gap — see
+      # docs/technical-log/phase-9.md.
       - name: API test coverage (enforced)
         run: pnpm --filter @dos/api run test:coverage
 
-      - name: Web test coverage (reporting only, not yet gated)
+      - name: Web test coverage (enforced)
         run: pnpm --filter @dos/web run test:coverage
 
       - name: Upload coverage reports

@@ -124,6 +124,34 @@ deliberately unbuilt (`docs/technical-log/phase-9.md` has the full log).
   scripts in both apps; CI now runs `apps/api`'s coverage as a real
   gate and `apps/web`'s as a reporting-only step, uploading both
   `lcov.info` files as a build artifact.
+- **Closed the `apps/web` coverage gap**: wrote RTL/Vitest component
+  and page tests for everything the previous entry left untested —
+  every auth page, `ClientsPage`, `ServicesPage`, `StaffPage`,
+  `JobsPage`, `InvoicesPage`, `MyJobsPage`, `MyInvoicesPage`,
+  `BillingPage` (previously only its pure `formatPrice`/`formatLimit`
+  helpers), `App.tsx`'s routing, `AppLayout`, `NotificationBell`,
+  `Modal`, `Field`, `Pagination`, `Button`, `AuthCard`, and
+  `JobsCalendarView` (including native drag-and-drop rescheduling).
+  Coverage went from 6.48%/5.52% (statements/branches) to
+  84.8%/77.53% (76.27% functions, 88.23% lines) — real numbers, not
+  a target picked in advance. Set `vite.config.ts`'s
+  `test.coverage.thresholds` a few points below that measured
+  baseline (82/75/73/85), with the same falsifiability check used for
+  `apps/api`'s gate (temporarily raised to 99%, confirmed the exact
+  failure, reverted); CI's "Web test coverage" step is now enforced,
+  matching `apps/api`. Found and fixed a real bug while testing
+  `ForgotPasswordPage`: its submit handler had a `try/finally` with
+  no `catch`, so a failed request surfaced as an unhandled promise
+  rejection instead of the intended "always show the same outcome"
+  behavior — harmless before, but now that `apps/web` has Sentry
+  wired up, it would have been misreported as a genuine application
+  error on every failed password-reset request. See
+  `docs/technical-log/phase-9.md` for the jsdom workarounds this
+  effort needed (Modal's always-mounted `<dialog>`, `showModal`/
+  `close` polyfill, `Response`/`Blob` cross-realm gap, fake-timer/
+  `waitFor` deadlock) and the three real TypeScript errors `tsc -b`
+  caught in the new test files that `vitest run`'s looser transform
+  had missed.
 
 ### Changed — Fase 9.1
 
