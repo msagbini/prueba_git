@@ -16,10 +16,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # No `version:` here — pnpm/action-setup@v4 reads the exact version
+      # from package.json's `packageManager` field. Specifying both makes
+      # the action refuse to run ("Multiple versions of pnpm specified").
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: Setup Node
         uses: actions/setup-node@v4
