@@ -1,0 +1,10 @@
+# Force LF line endings on checkout regardless of a contributor's local
+# core.autocrlf setting. Without this, a Windows checkout with the common
+# `core.autocrlf=true` config converts every text file's LF to CRLF —
+# harmless for most files, but silently corrupts values inside .env files
+# (e.g. `apps/api/.env.example`, copied verbatim to `.env`): a connection
+# string like `MIGRATION_DATABASE_URL=...&schema=public` picks up a
+# trailing `\r`, which breaks Prisma's URL parsing and surfaces as a
+# confusing "authentication failed for `(not available)`" error that has
+# nothing to do with the actual database credentials.
+* text=auto eol=lf

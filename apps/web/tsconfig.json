@@ -1,0 +1,10 @@
+{
+  "extends": "@dos/config/typescript/react.json",
+  "compilerOptions": {
+    "baseUrl": "./src",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": ["vite/client"]
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,1547 @@
+# Fase 9 — Hardening y funcionalidad operativa: technical log
+
+Status: **Fase 9 completa.** No es parte del roadmap original de 8 fases
+(ese roadmap cerró en Fase 8) — es trabajo dirigido directamente por el
+stakeholder a partir de una auditoría técnica propia, con autorización
+estándar para proceder sin aprobación paso a paso siempre que cada paso
+esté doble-chequeado y probado.
+
+Tracks what was actually built during Fase 9.
+
+## Planning
+
+- Al cerrar Fase 8, se hizo una auditoría real del proyecto a pedido del
+  usuario ("Pues mira como vas... Diseño, cómo optimizar todo, seguridad,
+  innovación... funcionalidades, cosas que faltan aún") — no una revisión
+  de código en abstracto: se levantó el stack completo, se creó una
+  organización nueva por signup real, se ejercitaron flujos de negocio
+  contra la API viva, y se corrió `pnpm audit`. El hallazgo principal:
+  `apps/web` tenía tres páginas (Login, Dashboard, Billing) mientras que
+  clientes/jobs/staff/servicios/facturas tenían APIs completas y
+  probadas desde Fase 3 sin ninguna UI encima. Se identificaron además:
+  paginación ausente en todos los endpoints de listado, el proveedor de
+  email nunca saliendo de la consola, sin rate-limit específico en login,
+  6 vulnerabilidades altas en dependencias, `Job.recurrenceRule` sin
+  procesar desde Fase 2, y ninguna capacidad de subir archivos/fotos.
+- El usuario respondió "Pues dale con todo tu que yo tengo tiempo" —
+  autorización para atacar toda la lista de hallazgos, no solo uno.
+- Se armó una lista de tareas explícita (paginación → 5 páginas
+  operativas → email real → hardening de seguridad → jobs recurrentes →
+  adjuntos de fotos → este cierre), deliberadamente en ese orden: la
+  paginación es una dependencia de las páginas de listado que vienen
+  después, y las páginas operativas eran el hallazgo de mayor impacto.
+- Deliberadamente **no** se atacaron en esta fase (ver "Fase 9 — cierre"
+  para el porqué de cada uno): portal de cliente final, generación de PDF
+  de facturas, calendario/dispatch board, integraciones externas, cámara
+  en mobile, migración mayor de NestJS 10→11/react-router 6→7.
+
+## Build log
+
+### Paginación
+
+Todo endpoint de listado (`GET /clients`, `/jobs`, `/invoices`,
+`/payments`, `/staff`, `/services`) hacía `findMany()` sin límite —
+`GET /jobs` en particular trae un `include` pesado (cliente, dirección,
+servicios, asignaciones por fila). Se agregó `PaginationQueryDto`
+compartido (`page`/`pageSize`, tope de 100) y un envelope
+`PaginatedResult<T>` (`{ items, page, pageSize, total, totalPages }`),
+aplicado de forma consistente. `service-categories` quedó
+deliberadamente sin paginar — es taxonomía organizacional, no un
+registro transaccional creciente, mismo razonamiento que `plans`.
+
+Actualizó el único consumidor real de la forma anterior (`JobsListScreen`
+en `apps/mobile`, que esperaba un array plano) y las aserciones de la
+suite e2e. Verificado en vivo: `GET /clients?page=1&pageSize=5` devuelve
+la forma correcta; `pageSize=9999` devuelve 400 (el cap de validación
+funciona).
+
+### Portal operativo en `apps/web` (Clientes, Servicios, Staff, Jobs, Facturas)
+
+El hallazgo de mayor impacto de la auditoría, resuelto con cinco páginas
+CRUD reales — no maquetas — contra las APIs que existían desde Fase 3:
+
+- **Capa de componentes compartida** (`components/ui/`): `Button`,
+  `Field`/`SelectField`/`TextareaField` (label/error asociados vía
+  `aria-describedby`), `Modal` (sobre el elemento nativo `<dialog>` —
+  focus trap y Escape-to-close gratis, sin reinventar esa lógica de
+  accesibilidad) y `Pagination`. Cierra dos hallazgos de la auditoría a
+  la vez ("sin sistema de componentes", "cero `aria-*`").
+- **Clientes**: lista paginada, crear/editar, gestión de direcciones
+  (sub-panel dentro del modal de edición).
+- **Servicios**: catálogo de categorías (control inline, no paginado —
+  mismo razonamiento que arriba) y servicios con precio (lista paginada,
+  crear/editar, campo de unidad condicional a `pricingType`).
+- **Staff**: invitar (envía por el endpoint de invitaciones existente,
+  con `roleCode: STAFF`), listar, editar campos de empleo. No hay
+  "crear staff" directo — un `StaffProfile` solo existe cuando se acepta
+  una invitación.
+- **Jobs**: lista con estado/fecha/asignados, crear/editar (cliente,
+  dirección, horario, notas, estado), asignar staff y agregar servicios
+  facturables desde el modal de edición.
+  - **Hallazgo real en la API mientras se construía esto**: `GET /jobs`
+    no incluía `assignments` en absoluto — "asignar staff" habría sido
+    de solo-escritura, sin forma de mostrar quién ya está en un job. Se
+    agregó al `JOB_DETAILS_INCLUDE` existente, mismo patrón que
+    cliente/dirección/servicios.
+- **Facturas**: crear, agregar líneas, registrar pagos — anidado dentro
+  de la misma vista de edición en vez de una página top-level separada
+  para pagos (`POST /payments` siempre apunta a una factura; no hay caso
+  de uso de "ver todos los pagos" definido en ningún documento del
+  producto).
+  - **Otro hallazgo real**: `GET /invoices/:id` no podía devolver las
+    líneas de la factura — solo existía `POST .../line-items`, sin forma
+    de leerlas de vuelta. Se enriqueció `findOne` con una consulta
+    adicional de líneas.
+- **Dashboard**: reemplaza el párrafo placeholder por tarjetas de acceso
+  directo a cada página nueva.
+
+Verificado en vivo con Playwright para cada página: crear, editar,
+sub-acciones (direcciones, asignaciones, líneas de factura, pagos),
+navegación completa por los 6 links del header + las 6 tarjetas del
+dashboard. Sin errores de consola más allá del 404 de favicon ya
+documentado como benigno desde Fase 8.
+
+### Proveedor de email real (P0 de seguridad)
+
+`ConsoleEmailService` seguía siendo el único proveedor — verificación de
+cuenta, reset de contraseña e invitaciones nunca le llegaban a un usuario
+real. Se agregó `SmtpEmailService` (nodemailer), enlazado en
+`AuthModule` vía un factory provider que elige entre SMTP real y el stub
+de consola según si `SMTP_HOST` está configurado — mismo patrón de
+degradación de `BillingService` con Stripe. Los links de los correos se
+construyen desde una nueva variable `WEB_APP_URL`
+(`/verify-email`, `/reset-password`, `/accept-invitation/:token`) — esas
+páginas todavía no existen en `apps/web`, marcado explícitamente como
+seguimiento separado, no bloqueante para que el mecanismo de envío sea
+real.
+
+6 tests unitarios nuevos (construcción del transporte, cada link, y que
+un fallo de envío se loguee en vez de lanzar — para que una caída
+transitoria de SMTP nunca haga fallar el signup/invite/reset que lo
+disparó). Es también el primer archivo de test a nivel unitario del
+proyecto — hasta ahora todo era integración/e2e, otro hallazgo de la
+auditoría.
+
+Sin credenciales SMTP reales en este proyecto — verificado en vivo que
+el wiring de DI elige correctamente `SmtpEmailService` cuando
+`SMTP_HOST` está seteado (un intento real de DNS/conexión que falla,
+logueado, sin tumbar el request), pero la entrega real de correo queda
+sin verificar. Mismo estándar de honestidad que Stripe en Fase 4.
+
+### Hardening de seguridad
+
+- **Rate limit específico en login/signup/forgot-password**: el único
+  límite existente era el global (100 req/60s, igual para
+  `/auth/login` que para `/plans`). Se agregó un override de 10 req/60s
+  en esas tres rutas via `@Throttle`. Verificado en vivo: 11 intentos
+  rápidos de login — los primeros 10 se procesan (401 por credenciales
+  malas), el 11º y 12º devuelven 429; `/health` no se ve afectado; la
+  suite e2e (bien por debajo de 10 logins/signups en total) sigue
+  pasando.
+- **Vulnerabilidades de dependencias**: de las 6 altas encontradas en la
+  auditoría, 4 eran de `multer` (vía `@nestjs/platform-express`, pineado
+  exacto a `2.0.2`, ya la versión más nueva disponible en la línea 10.x
+  de NestJS). Corregir esto de verdad requeriría una migración mayor a
+  NestJS 11 — no se apresuró esa migración aquí. En cambio, al construir
+  la funcionalidad de adjuntos (más abajo) esas rutas de multer se
+  volvieron código real y alcanzable por primera vez, así que se agregó
+  un override de pnpm (`multer: ^2.2.0` en `pnpm-workspace.yaml`)
+  forzando la versión parcheada en todo el árbol, incluso debajo de
+  `@nestjs/platform-express` — verificado con `pnpm why` y una nueva
+  corrida de `pnpm audit` (altas: 6 → 2). Las 2 restantes, más las
+  moderadas de `lodash`/`js-yaml`/`qs` (herramientas de dev/jest,
+  inalcanzables en runtime) y `react-router` (requiere su propia
+  migración mayor 6→7), quedan documentadas como seguimiento explícito,
+  no barridas bajo la alfombra.
+
+### Jobs recurrentes
+
+`Job.recurrenceRule` existe desde Fase 2 (el comentario del schema ya
+decía "generated recurring instances back [to the parent]") pero nada lo
+procesaba — crear un job con una regla de recurrencia guardaba el string
+y no hacía nada más. Se agregó `RecurringJobsService`: un `@Cron` diario
+(`@nestjs/schedule`) que, para cada organización, materializa la próxima
+ocurrencia debida (`rrule`, ventana de 7 días) de cualquier job raíz
+(`recurrenceRule` seteado, `parentJobId` nulo) como un `Job` hijo real —
+idempotente, con aislamiento por organización de punta a punta.
+
+**La pregunta arquitectónica real que esto planteó**: un cron job no
+tiene contexto de tenant por request, así que no puede usar el camino
+normal ni siquiera para saber qué organizaciones existen — toda tabla,
+incluida `organizations` misma, está protegida por RLS. Deliberadamente
+no se usó el rol `dos_migrator` (BYPASSRLS) para esto — ese rol está
+documentado como reservado solo para `prisma migrate` desde Fase 2, y
+usarlo acá difuminaría ese límite para cualquier futuro job en segundo
+plano. En cambio: una migración nueva agrega una política RLS angosta,
+explícita y de solo lectura (`system_job_read_all`) — SELECT únicamente,
+solo sobre `organizations`, habilitada por su propio flag de sesión que
+nada más setea. El trabajo real de lectura/escritura de jobs por
+organización sigue pasando por el mismo camino con tenant-scope que usa
+cada request.
+
+5 tests unitarios (matemática pura de fechas) y 2 de integración contra
+una base de datos real (materializa una fila `Job` hija real,
+correctamente aislada por organización; correrlo dos veces no duplica).
+
+### Adjuntos de fotos en jobs
+
+Ninguna capacidad de subir archivos existía en el proyecto — un hueco
+real para un producto de field service donde fotos de antes/después son
+evidencia estándar. Se agregó `JobAttachment` (modelo nuevo + migración
+con RLS, mismo patrón `tenant_isolation` de cada tabla de negocio) y tres
+rutas sobre el recurso `jobs` existente: `POST`/`GET .../attachments` y
+`GET .../attachments/:id`, con la misma autorización `jobs.read` que
+clock in/out (Staff solo si está asignado).
+
+Almacenamiento en disco local bajo `UPLOADS_DIR`, una subcarpeta por
+organización — no se decidió ningún proveedor de almacenamiento en la
+nube para este proyecto (mismo razonamiento de "no inventar
+infraestructura" que el trabajo de Docker en Fase 7), y el almacenamiento
+local es una implementación real y completa para donde este proyecto
+efectivamente corre hoy, no un placeholder. Los archivos se sirven por
+una ruta de descarga autenticada y con tenant-scope, no servido estático
+— un path público adivinable filtraría fotos de una organización a
+cualquiera con la URL. Valida tipo de archivo (JPEG/PNG/WebP) y tamaño
+(10MB) vía `fileFilter`/`limits` de multer.
+
+Deliberadamente acotado a la API solamente — conectar una pantalla de
+cámara al flujo de clock-out de `apps/mobile` es trabajo real y separado,
+y este sandbox no tiene dispositivo/simulador Android/iOS para
+verificarlo (la misma brecha de entorno documentada desde Fase 6), así
+que construirlo sin ninguna forma de verificarlo violaría la disciplina
+de testing del propio proyecto.
+
+Verificado en vivo de punta a punta: se subió un PNG real, se listó, se
+descargó y se confirmó identidad byte a byte con el original, se
+confirmó que un archivo no-imagen devuelve 415, y que un caller de otra
+organización recibe 404 tanto en listado como en descarga. Todo esto
+también quedó fijado como 3 tests e2e nuevos contra una base de datos
+real y uploads multipart reales, no mocks.
+
+## Fase 9 — cierre
+
+- **Alcance no inventado, seguido por autorización explícita**: cada
+  ítem de esta fase viene directo de la auditoría que el usuario pidió,
+  y el usuario autorizó explícitamente atacar toda la lista ("dale con
+  todo").
+- **Cinco bugs reales encontrados y arreglados mientras se construía,
+  no solo en la auditoría original**: el fix de modal-no-cierra en la
+  página de Jobs (inconsistencia de UX encontrada por Playwright), el
+  `assignments` faltante en `JOB_DETAILS_INCLUDE`, las líneas de factura
+  no legibles en `GET /invoices/:id`, la dependencia phantom de `multer`
+  (necesitaba ser dependencia directa, no solo vía override), y la
+  regresión de estado del test de invoices por race condition en el
+  propio script de verificación (descartada como bug real tras
+  confirmar contra la API directamente).
+- **Seguridad real, no solo agregada — verificada**: rate limit de login
+  probado con 11 requests reales; el override de multer confirmado con
+  `pnpm why` y una re-auditoría, no solo asumido.
+- **Arquitectura respetada, no evadida**: la automatización de jobs
+  recurrentes necesitaba salir del modelo de tenant-por-request de este
+  proyecto — se resolvió con una política RLS nueva, angosta y
+  explícita, en vez de tomar el atajo de usar el rol de BYPASSRLS
+  reservado para migraciones.
+- **Cobertura de tests donde no la había**: primer test unitario del
+  proyecto (`smtp-email.service.spec.ts`), mezclado con integración real
+  (recurring jobs, job attachments) y e2e con multipart real, no solo
+  mocks.
+
+### Lo que queda deliberadamente sin construir
+
+Ninguno de estos está pedido en ningún documento del proyecto — se
+listan aquí para que la brecha esté documentada, no oculta:
+
+- **Cámara en `apps/mobile`** para adjuntar fotos desde el flujo de
+  clock-out — bloqueado en tener un dispositivo/simulador real para
+  verificarlo, mismo gap documentado desde Fase 6.
+- **Migraciones mayores de dependencias** (NestJS 10→11, react-router
+  6→7) que resolverían de raíz las vulnerabilidades restantes — cada una
+  es su propio esfuerzo de migración con su propia superficie de cambios
+  incompatibles, no algo para apurar dentro de un hardening pass.
+
+## Fase 9.1 — Optimización adicional
+
+El stakeholder pidió continuar: primero una auditoría real en vivo
+("córrelo, qué hay que mejorar? Diseño, optimizar, seguridad,
+innovación... funcionalidades, cosas que faltan aún"), luego
+autorización a actuar sobre todo lo encontrado ("dale con todo"), y
+finalmente pidió seguir optimizando "desde todos los aspectos" y
+cerrar funcionalidad que no existía antes. Esto se atacó en dos
+partes.
+
+### Rendimiento — encontrado y verificado, no especulado
+
+- Se recorrió cada `for (const ... of ...)` en los `*.service.ts` de
+  `apps/api` buscando N+1 reales: no se encontró ninguno (el módulo de
+  reports hace un `findMany` acotado por rango de fechas + agregación
+  en memoria, que es el patrón correcto).
+- El problema real: cada tabla tenía un único índice (`organizationId`).
+  Toda query de "hijos de X" (`jobId`, `invoiceId`, `clientId`,
+  `parentJobId`) y toda columna de `orderBy` de las páginas paginadas no
+  tenían índice de soporte más allá del de tenant. Se añadieron 12
+  índices (`Job`, `ClientAddress`, `JobService`, `JobAttachment`,
+  `JobAssignment`, `InvoiceLineItem`, `Payment`, `Client`, `Service`,
+  `StaffProfile`, `Invoice`) vía
+  `prisma/migrations/20260804115922_performance_indices/`.
+- Verificado, no asumido: `SELECT ... FROM pg_indexes` confirmó los 24
+  índices totales existen; `SET enable_seqscan = off; EXPLAIN ...`
+  confirmó que el planner sí usa `jobs_organization_id_scheduled_start_idx`
+  cuando le conviene (con los volúmenes de datos de prueba actuales el
+  planner prefiere seq scan, comportamiento correcto a esa escala, no
+  señal de que el índice no funcione).
+- `apps/web`: code-splitting por ruta con `React.lazy` + un único
+  `Suspense` en el nivel superior. Medido con `vite build` real: el
+  bundle inicial bajó de 213.71 kB (64.04 kB gzip) a 173.89 kB
+  (56.85 kB gzip). Confirmado con Playwright contra el dev server real
+  que los chunks de las páginas operativas solo cargan al navegar a
+  ellas, no en el login/dashboard inicial.
+
+### Funcionalidad — páginas web para los links de email
+
+Fase 9 dejó `SmtpEmailService` enviando links reales a
+`/verify-email`, `/reset-password` y `/accept-invitation/:token` que no
+tenían página en `apps/web` — brecha documentada arriba, cerrada ahora:
+
+- `AuthCard` — layout compartido factorizado de `LoginPage` (que además
+  se reescribió sobre este componente) para las cuatro pantallas nuevas.
+- `ForgotPasswordPage` (`/forgot-password`): dispara
+  `POST /auth/forgot-password`; muestra siempre el mismo mensaje de
+  éxito exista o no la cuenta, replicando el comportamiento del backend
+  de no confirmar ni negar la existencia del email.
+- `ResetPasswordPage` (`/reset-password?token=...`): lee el token de la
+  query string, llama `POST /auth/reset-password`, distingue token
+  inválido/expirado (400) de otros errores.
+- `VerifyEmailPage` (`/verify-email?token=...`): dispara
+  `POST /auth/verify-email` al montar, sin formulario.
+- `AcceptInvitationPage` (`/accept-invitation/:token`): trae el preview
+  público (`GET /invitations/:token`) y replica exactamente el
+  branching del backend (`AuthService.acceptInvitation`) — si
+  `useAuth().isAuthenticated` es true, acepta con body vacío
+  (el backend exige que el usuario autenticado sea el dueño del email
+  invitado); si no, pide nombre/apellido/contraseña para crear la
+  cuenta nueva; un 409 (cuenta existente, no autenticado como ese
+  usuario) muestra el mensaje de "iniciá sesión primero".
+- Las cuatro rutas se registraron en `App.tsx` como públicas (fuera de
+  `RequireAuth`), también lazy-loaded.
+- **Verificado en vivo, no solo con tests unitarios**: con la API y el
+  dev server de `apps/web` corriendo de verdad, se creó una
+  organización real por signup, se dispararon los tres emails
+  (`ConsoleEmailService` los loguea), se extrajeron los tokens reales
+  del log, y con Playwright contra Chromium real se probó: reset de
+  contraseña con token inválido y válido (con login posterior usando la
+  contraseña nueva), verificación de email con token inválido y válido,
+  y las tres ramas de aceptar invitación (cuenta nueva sin
+  autenticación, cuenta existente sin autenticación → 409, cuenta
+  existente autenticado como ese usuario → acepta directo sin mostrar
+  el formulario). Las 9 verificaciones live pasaron.
+
+### Funcionalidad — generación de PDF de facturas
+
+También listado arriba como brecha deliberada — los datos de una
+factura estaban completos desde Fase 3, pero no había forma de
+exportarla. Cerrado ahora:
+
+- `InvoicePdfService` (`apps/api`, `pdfkit`, sin dependencias nativas
+  ni navegador headless) renderiza una factura de una página: datos de
+  la organización, número/fechas/estado de la factura, datos del
+  cliente (nombre, contacto, email, teléfono) y su dirección de
+  facturación (`ClientAddress` con `label=BILLING`, si existe — nada
+  de esto es un campo nuevo, todo ya vivía en el schema desde Fase 2/3),
+  la tabla de line items, y subtotal/tax/total. No recalcula nada —
+  solo da formato a los totales que `InvoicesService.recomputeTotals()`
+  ya mantiene correctos.
+- `GET /invoices/:id/pdf` (`invoices.read`, misma visibilidad por fila
+  que el resto del módulo — un Client solo puede pedir el PDF de sus
+  propias facturas) sirve el PDF vía `StreamableFile`, mismo patrón que
+  la descarga de adjuntos de jobs (Fase 9).
+- `apps/web`: botón "PDF" en la fila de cada factura y botón
+  "Download PDF" dentro del modal de edición — un nuevo helper
+  `downloadFile()` en `api/client.ts` (paralelo a `apiFetch`, pero para
+  respuestas binarias: arma un blob, dispara la descarga del navegador,
+  libera el object URL) en vez de forzar el flujo JSON existente a
+  manejar bytes.
+- **Verificado en vivo, no solo con un e2e que aserte el content-type**:
+  se creó una organización, un cliente con dirección de facturación
+  real, y una factura con dos line items reales por HTTP contra la API
+  corriendo; se descargó el PDF resultante y se decodificaron sus
+  streams `FlateDecode` a mano (Python + zlib) para confirmar que el
+  texto renderizado coincide byte a byte con los datos reales: nombre
+  de la organización, número de factura, fechas, "Bill to" completo con
+  la dirección, cada línea de servicio con cantidad/precio/total, y
+  Subtotal/Tax/Total ($402.50, correcto). Además, con Playwright real
+  se click-eó el botón "PDF" en la lista y el botón "Download PDF" en
+  el modal, confirmando en ambos casos una descarga real con nombre
+  `INV-0001.pdf` y bytes que empiezan con la firma `%PDF-`. Cobertura
+  añadida a la suite e2e existente: PDF válido para el dueño de la
+  factura, 404 para un id inexistente y para una factura de otra
+  organización (aislamiento multi-tenant también en esta ruta).
+- `pnpm audit --prod` re-corrido tras añadir `pdfkit`: mismas 15
+  vulnerabilidades pre-existentes que ya estaban documentadas, ninguna
+  nueva introducida por la dependencia.
+
+### Funcionalidad — portal de cliente final
+
+El tercer ítem de la lista de brechas deliberadas. El rol `Client`
+existe en el RBAC desde Fase 2 con visibilidad ya filtrada en el
+backend (`jobs.read`/`invoices.read`/`payments.read`, siempre
+restringido a sus propios registros vía `visibilityFilter()` en cada
+servicio), pero no tenía ninguna pantalla. Cerrado ahora:
+
+- `decodeJwtRole()` (`apps/web/src/api/client.ts`) lee el claim `role`
+  del access token sin verificar la firma — es solo para decidir qué
+  nav mostrar, nunca una decisión de autorización (eso lo sigue
+  haciendo `PermissionsGuard` en la API contra el mismo token). Nuevo
+  en `AuthContext`: `role` en el contexto, recalculado en cada
+  `login()`/restauración de sesión.
+- Al construir esto se encontró un bug real y no relacionado en
+  `AcceptInvitationPage` (Fase 9.1, addendum anterior): esa página
+  llamaba a `setAccessToken()` directamente en vez de pasar por
+  `AuthContext`, así que el estado de React de `status` nunca pasaba a
+  `authenticated` — `RequireAuth` rebotaba al usuario recién aceptado
+  de vuelta a `/login` a pesar de que el backend sí había emitido una
+  sesión válida. Se agregó `AuthContext.setSession()` (adopta un
+  access token emitido fuera de `login()`, recalculando `role` también)
+  y `AcceptInvitationPage` ahora lo usa en las dos ramas. Confirmado en
+  vivo que antes del fix la URL rebotaba a `/login` ~1.5s después de
+  "llegar" al dashboard, y que después del fix se queda.
+- `AppLayout`/`DashboardPage` ahora son conscientes del rol: un
+  caller `CLIENT` ve un nav de dos ítems ("My jobs"/"My invoices") en
+  vez del nav operativo completo — no tiene permiso para ninguno de
+  esos módulos (`clients.read`/`services.read`/`staff.read`/billing no
+  están en su lista de permisos, ver `prisma/seed.ts`), así que
+  mostrárselos solo produciría errores 403 silenciosos.
+- `MyJobsPage` (`/my-jobs`) y `MyInvoicesPage` (`/my-invoices`):
+  contrapartes de solo lectura de `JobsPage`/`InvoicesPage` — mismos
+  endpoints (`GET /jobs`, `GET /invoices`, `GET /invoices/:id`), sin
+  formularios de creación/edición/asignación (el caller no tiene
+  `*.manage`). `MyInvoicesPage` reutiliza el botón de descarga de PDF
+  de Fase 9.1 y un modal de "ver" con line items y pagos, ambos de
+  solo lectura.
+- **Verificado en vivo de punta a punta**: se creó una organización, un
+  cliente con dirección de facturación, un job y una factura reales
+  por HTTP, y se invitó ese email como rol `Client` ligado a ese
+  registro de cliente (`clientId` en la invitación). Con Playwright
+  real se aceptó la invitación como cuenta nueva, se confirmó que el
+  dashboard y el nav muestran las vistas de cliente (no las
+  operativas), que `/my-jobs` y `/my-invoices` muestran exactamente el
+  job/factura de ese cliente con los datos reales (incluido el total
+  de $225), que la descarga de PDF y el modal de "ver" funcionan, y
+  que navegar directamente a `/clients` (una URL que un Client no
+  debería usar) falla con un mensaje de error en vez de romper la
+  página. Por separado, se verificó que la rama "ya autenticado" de
+  `AcceptInvitationPage` (aceptar una invitación a una segunda
+  organización estando logueado) sigue funcionando tras el fix de
+  `setSession()`, y que el nav cambia correctamente al set operativo
+  al aceptar como Staff en esa segunda organización.
+
+### Funcionalidad — calendario/dispatch board
+
+Último ítem grande de la lista de brechas deliberadas: `JobsPage` era
+una lista, no una vista de calendario/semana. Cerrado con un toggle
+List/Calendar dentro de la misma página (no una ruta nueva) — la lista
+sigue siendo necesaria para jobs sin `scheduledStart` (`DRAFT`), que
+una vista de calendario no tiene dónde ubicar.
+
+- Backend: `GET /jobs` gana `scheduledFrom`/`scheduledTo` opcionales
+  (`ListJobsQueryDto`, mismo patrón de nombres que
+  `DateRangeQueryDto` en `modules/reports`), filtrando sobre
+  `scheduledStart`. Necesario porque paginar a 100 filas no alcanza
+  para "todos los jobs de esta semana" en una organización con
+  suficiente volumen — antes de este cambio no había forma de pedirle
+  a la API un rango de fechas en absoluto.
+- `JobsCalendarView` (`apps/web/src/components/jobs/`): vista de
+  semana, un componente nuevo y autocontenido (fetch propio por
+  semana, sin tocar el estado de paginación de la vista de lista).
+  Arrastrar-y-soltar con drag-and-drop nativo de HTML5 (sin librería —
+  es el único lugar de la app que lo necesita): soltar un job en otro
+  día llama al mismo `PATCH /jobs/:id` que ya usa el formulario de
+  edición, preservando la hora del día y la duración original
+  (`scheduledEnd - scheduledStart`), no un endpoint nuevo. Click (sin
+  arrastrar) abre el mismo modal de edición que la vista de lista, vía
+  un callback `onOpenJob` — un solo modal, dos formas de llegar a él.
+  Navegación semana anterior/siguiente/"Today".
+- **Verificado en vivo, con un drag-and-drop real, no simulado**: se
+  creó una organización/cliente/job real vía HTTP con
+  `scheduledStart` en el día de hoy, y con Playwright (`dragTo`, que
+  despacha los eventos HTML5 DnD reales, no solo un mousemove) se
+  arrastró la tarjeta del job a la columna del día siguiente; se
+  confirmó contra la API (`GET /jobs`, sin filtro de fecha) que
+  `scheduledStart` efectivamente cambió al nuevo día conservando la
+  hora. Se verificó el click-para-editar, y la navegación de semanas
+  (con `waitForResponse` en vez de esperas arbitrarias, para no
+  depender de timing): la semana anterior no muestra el job movido, la
+  semana actual sí. Un primer intento de esta última verificación dio
+  un falso positivo — `document.body.textContent` incluía el nombre
+  del cliente porque aparecía como `<option>` dentro del `<select>`
+  del modal "New job", que queda en el DOM (oculto, no desmontado)
+  incluso cerrado; se corrigió acotando el assert al grid del
+  calendario en vez de al `body` completo, y se confirmó con el HTML
+  real del grid que estaba vacío como se esperaba.
+- Cobertura e2e nueva en `business-flows.e2e.spec.ts`: el filtro
+  `scheduledFrom`/`scheduledTo` incluye un job dentro de la ventana y
+  lo excluye fuera de ella.
+
+### Funcionalidad — portal de cliente en `apps/mobile`
+
+`apps/mobile` era Staff-only desde Fase 6. Se extiende con un segundo
+stack de navegación para el rol `Client`, reflejando el trabajo ya
+hecho en `apps/web` (más arriba en este mismo addendum) — mismo
+approach: decodificar `role` del access token, ramificar la UI, sin
+tocar el modelo de permisos del backend (ya existía desde Fase 2).
+
+- `decodeJwtRole()` portado a `apps/mobile/src/api/client.ts`, idéntico
+  al de `apps/web`. RN provee `atob`/`btoa` como globals del core desde
+  la 0.72 (esta app apunta a 0.86), así que no hace falta ningún
+  polyfill — sí hizo falta declarar el tipo ambiente
+  (`src/types/globals.d.ts`), porque `@react-native/typescript-config`
+  no incluye la lib DOM (no es un entorno de navegador) y por lo tanto
+  `tsc` no conocía `atob` sin esa declaración.
+- `AuthContext` gana `role`, poblado en el mismo punto único
+  (`applyTokens()`) que ya cubre las tres formas de obtener sesión
+  (login, restauración al abrir la app, selección de organización) —
+  no hubo que tocar cada call site por separado.
+- `RootNavigator` ahora elige entre tres stacks según
+  `status`/`role`: no autenticado, `ClientStack` (si `role === 'CLIENT'`),
+  o el `AppStack` de Staff existente (si no). `ClientStack`:
+  `ClientHomeScreen` (dos atajos, como el dashboard de cliente de
+  `apps/web`) → `MyJobsScreen` (solo lectura, sin acciones de
+  clock in/out — un Client no puede actuar sobre un job) y
+  `MyInvoicesScreen` → `MyInvoiceDetailScreen` (line items + pagos,
+  contraparte en pantalla completa del modal "View" de
+  `MyInvoicesPage` en web).
+- Se agregaron los tipos `Invoice`/`InvoiceLineItem`/`InvoiceWithLineItems`/
+  `Payment` a `apps/mobile/src/types/api.ts`, que hasta ahora solo
+  tenía tipos de `Job` (la app nunca había necesitado facturas).
+- **Deliberadamente sin botón de descarga de PDF**, a diferencia del
+  portal de `apps/web`: requeriría una librería de guardado de
+  archivos que esta app bare RN no tiene instalada, y no hay forma de
+  verificar que enlace correctamente sin un dispositivo o simulador
+  real — no se agrega y se deja sin verificar.
+- **Verificación, con la misma limitación de siempre para esta app**:
+  sin Android SDK/Xcode en este contenedor, no se pudo renderizar
+  ninguna pantalla en un dispositivo o simulador real (mismo gap
+  documentado desde Fase 6). Lo que sí se verificó: `tsc --noEmit`,
+  `eslint`, `jest` (11/11, incluyendo tests nuevos de `decodeJwtRole`
+  que confirman que `atob`/`btoa` funcionan tanto en el entorno de
+  Jest como se espera en el runtime de RN), y el bundle de Metro para
+  Android — y, del lado del backend real que estas pantallas
+  consumen, los mismos `GET /jobs`/`GET /invoices`/`GET /payments` ya
+  fueron ejercitados en vivo con un token real de rol `CLIENT` al
+  verificar el portal de `apps/web` más arriba en este documento.
+
+### Funcionalidad — notificaciones (job-assigned, job-reminder)
+
+El último ítem grande de la lista de brechas deliberadas era
+"notificaciones más allá de auth", explícitamente marcado como algo
+que requeriría definir alcance de negocio nuevo — no algo para
+construir unilateralmente bajo la autorización estándar de esta fase.
+El stakeholder lo autorizó explícitamente ("Dale todo lo que creas.
+Sigue tú en lo tuyo"), así que el diseño de alcance de esta sección
+es una decisión tomada bajo esa autorización puntual, no bajo la
+autorización general de "doble-chequeado y probado" del resto de la
+Fase 9.1.
+
+**Decisión de alcance, y por qué:** en vez de inventar un proceso de
+negocio nuevo, el módulo solo superficia dos eventos que ya ocurren:
+una asignación de staff a un job, y un job por empezar pronto. Sin
+entrega por email/push — el email transaccional de Fase 9 ya cubre el
+único canal que los eventos de auth necesitaban, y agregar un segundo
+canal de entrega sería inventar alcance real, no solo superficiar un
+evento existente.
+
+- **Schema**: `Notification` (`organizationId`, `userId` destinatario,
+  `type` — `JOB_ASSIGNED`/`JOB_REMINDER` —, `title`, `body`,
+  `entityType`/`entityId` sueltos en vez de una relación real, porque
+  distintos tipos de notificación futuros podrían apuntar a distintos
+  tipos de entidad, `readAt`). Migración con la misma política RLS
+  `tenant_isolation` de siempre; la restricción a "mis propias
+  notificaciones" (`userId = caller`) se aplica en
+  `NotificationsService`, la misma segunda capa que ya usan los
+  filtros de visibilidad de Staff/Client en Jobs/Invoices — RLS
+  nunca fue pensado para filtrar por usuario, solo por organización.
+  Permiso `notifications.read` sembrado para los cinco roles (una
+  notificación es personal por construcción, no hay nada que un
+  permiso además restrinja).
+- **`NotificationWriterService`** (`modules/notifications`, exportado)
+  espeja el rol de `AuditLogWriterService` para el trail de auditoría:
+  el único punto de escritura que otros módulos usan. `JobsService.
+createAssignment()` lo llama justo después de crear el
+  `JobAssignment`, notificando al staff asignado.
+- **`JobRemindersService`** (`modules/jobs`, nuevo, junto a
+  `RecurringJobsService`): corre cada hora (no diario, como
+  `RecurringJobsService` — una ventana de recordatorio de 24h no
+  debería esperar a la corrida de la mañana siguiente si un job entra
+  a esa ventana a mitad del día), mismo mecanismo de
+  `system_job_read_all` + `runInTenantTransaction` para no tener
+  contexto de tenant por-request. Notifica a cada staff asignado y a
+  cada usuario de portal de cliente ligado al `clientId` del job (un
+  cliente puede tener más de un usuario de portal — se notifica a
+  todos, no solo al primero). Idempotente revisando si ya existe una
+  notificación `JOB_REMINDER` para ese job+destinatario antes de
+  crear otra, en vez de agregar un campo nuevo a `Job` para rastrear
+  "ya se envió un recordatorio" — la tabla `Notification` ya tiene
+  todo lo necesario para esa revisión.
+- **API**: `GET /notifications` (paginado, propias, más recientes
+  primero), `GET /notifications/unread-count` (para un badge),
+  `POST /notifications/:id/read` (idempotente, 404 si no es propia).
+- **`apps/web`**: `NotificationBell` en `AppLayout` — badge con el
+  conteo sin leer (poll cada 30s), dropdown con las últimas
+  notificaciones, click marca como leída. Sin deep-link a la entidad
+  subyacente — cada tipo de notificación actual ya tiene un
+  "next step" obvio ("andá a ver tus jobs") sin necesitar uno.
+- **Verificado en vivo de punta a punta, no solo con los tests**: se
+  creó una organización, un cliente, un job, y un staff real por
+  HTTP; se confirmó el conteo de no-leídas en 0 antes de asignar, se
+  asignó el staff al job, y se confirmó la notificación real
+  (`JOB_ASSIGNED`, título/cuerpo con el nombre real del cliente) en
+  la lista del staff — y que el Owner no la ve ni puede marcarla como
+  leída (404). Con Playwright real se probó el bell completo en el
+  navegador: badge con conteo real, dropdown con el contenido real,
+  click marca como leída y el badge desaparece, click-afuera cierra
+  el dropdown. Para el cron de recordatorios (imposible de esperar en
+  vivo — corre cada hora) se escribió un test de integración contra
+  Postgres real (`job-reminders.integration.spec.ts`, mismo patrón
+  que `recurring-jobs.integration.spec.ts`): un job dentro de la
+  ventana de 24h notifica tanto al staff asignado como al usuario de
+  portal del cliente, uno fuera de la ventana no notifica a nadie, y
+  correr el cron dos veces no duplica notificaciones.
+- Cobertura e2e nueva en `business-flows.e2e.spec.ts`: el flujo
+  completo de asignación → notificación → aislamiento entre
+  usuarios → marcar como leída, agregado al test de asignación de
+  Staff ya existente.
+
+### Notificaciones en `apps/mobile`
+
+Espejo del trabajo anterior en `apps/web` — mismo patrón que el
+portal de cliente en mobile (más arriba en este addendum): llevar una
+funcionalidad ya construida y verificada de un lado del monorepo al
+otro, no una decisión de alcance nueva (esa ya se tomó, y se
+documentó, en la sección de arriba).
+
+- `NotificationsScreen` (alcanzable tanto desde `AppStack` de Staff
+  como desde `ClientStack` de Client — una notificación no es
+  específica de un rol): lista, tap para marcar como leída, mismo
+  patrón de `FlatList` + `useFocusEffect` que el resto de las
+  pantallas de esta app.
+- `NotificationsButton`, un botón nuevo en el header de la pantalla
+  de inicio de ambos stacks, junto a "Sign out" (`HeaderActions` los
+  agrupa — `headerRight` de React Navigation solo acepta un slot).
+  Badge con el conteo de no-leídas, poll cada 30s, mismo intervalo
+  que `apps/web`'s `NotificationBell`. Sin librería de íconos (esta
+  app no tiene ninguna instalada) — el emoji 🔔 como `Text`, mismo
+  approach sin-íconos que el resto de la UI de mobile.
+- Tipos `NotificationType`/`AppNotification` agregados a
+  `types/api.ts` (con ese nombre, no `Notification`, para no
+  confundir con cualquier tipo global futuro del mismo nombre —
+  mismo cuidado que se tomó en `apps/web`).
+
+**Verificación, misma limitación de siempre para esta app**: sin
+Android SDK/Xcode en este contenedor, no se pudo renderizar en un
+dispositivo o simulador real. Lo que sí se verificó: `tsc --noEmit`,
+`eslint`, `jest` (11/11), y el bundle de Metro para Android — y, del
+lado del backend real que esta pantalla consume, `GET /notifications`/
+`GET /notifications/unread-count`/`POST /notifications/:id/read` ya
+se habían verificado en vivo contra la API real al construir el
+`NotificationBell` de `apps/web` más arriba en este documento.
+
+### Verificación de este addendum
+
+- `pnpm --filter web run build` / `lint` / `test` — verde.
+- `pnpm turbo run lint build test --force` — 9/9 tareas verdes en todo
+  el monorepo (`api`, `web`, `mobile`, `config`).
+- Migración de índices aplicada limpiamente contra Postgres local
+  (`prisma migrate dev`), sin downtime porque son solo `CREATE INDEX`
+  aditivos.
+- `docs/api/openapi.yaml` regenerado (`pnpm docs:api`) para incluir
+  `GET /invoices/:id/pdf`, los nuevos query params de `GET /jobs`, y
+  las tres rutas de `/notifications`.
+- Tests nuevos: `decodeJwtRole()` (bien formado, sin claim `role`,
+  malformado) en `apps/web` y `apps/mobile`; `AuthContext` (`role`
+  reflejando el JWT tras login/restauración de sesión, y
+  `setSession()`) en `apps/web`; el filtro de fechas de `GET /jobs`,
+  el flujo de asignación → notificación, y `JobRemindersService`
+  (integración contra Postgres real) en `apps/api` — 14/14 tests de
+  `apps/web`, 11/11 de `apps/mobile`, 54/54 de `apps/api`, verdes.
+- `pnpm audit --prod`: mismas 15 vulnerabilidades pre-existentes, sin
+  cambios (no se agregó ninguna dependencia nueva para este módulo).
+
+### Migración: `react-router-dom` 6→7
+
+De las dos migraciones mayores de dependencias que quedaban
+explícitamente diferidas, esta era la de menor riesgo real: `apps/web`
+usa únicamente el modo declarativo (`BrowserRouter`/`Routes`/`Route`,
+sin data router, sin `loader`/`action`, sin rutas splat `*`), que es
+exactamente el caso que react-router v7 diseñó como superset
+compatible de v6 — y la consola ya venía emitiendo los warnings de
+preparación para v7 (`v7_startTransition`, `v7_relativeSplatPath`)
+desde antes de esta fase, señal de que el terreno ya estaba
+preparado. Se evaluó antes de tocar nada: sin eso, no se hubiera
+intentado en la misma pasada que el resto de este addendum.
+
+- `pnpm --filter web add react-router-dom@^7.18.2` — bump directo, sin
+  cambios de código: compila limpio, sin errores de tipos.
+- **Beneficio real, no solo la versión**: resuelve 2 de las
+  vulnerabilidades de dependencias documentadas desde el audit
+  original de Fase 9 (`GHSA-jjmj-jmhj-qwj2`, sin parche disponible en
+  la serie 6.x; `GHSA-337j-9hxr-rhxg`, parcheada recién en 7.18.0+).
+  `pnpm audit --prod`: 15 → 13 vulnerabilidades.
+- Bundle inicial creció de 180.78 kB (58.97 kB gzip) a 195.73 kB
+  (64.12 kB gzip) — el core de v7 es más grande. Aceptado: es el costo
+  de estar en la versión soportada actual más el cierre de dos
+  vulnerabilidades reales, no una regresión de rendimiento buscada.
+- **Verificado en vivo con Playwright**, no solo con el build: los 6
+  links de navegación operativa, las tarjetas de acceso directo del
+  dashboard, el toggle List/Calendar de Jobs (estado interno, no
+  routing, pero se confirmó que sigue andando), atrás/adelante del
+  navegador vía la History API, logout, redirección de rutas
+  protegidas a `/login` para un visitante no autenticado, y que
+  `/forgot-password` (ruta pública) sigue rindiendo bien. Consola
+  limpia de warnings de react-router (los de v6 preparándose para v7
+  desaparecieron, como se esperaba).
+
+**Hallazgo real, no relacionado con esta migración, encontrado
+mientras se verificaba**: una secuencia de recargas de página
+completas muy seguidas (`goto()` repetidos en rápida sucesión, algo
+que un usuario real casi nunca hace, pero que un script de
+verificación sí) puede terminar en un 401 y forzar logout. La
+hipótesis, no confirmada con instrumentación del lado del servidor:
+`AuthContext` dispara `POST /auth/refresh` en cada montaje completo de
+la app; si una recarga nueva interrumpe el fetch de la rotación
+anterior antes de que el navegador reciba el `Set-Cookie` con el
+refresh token nuevo — pero el servidor ya procesó la rotación y
+revocó el viejo — la siguiente carga reintenta con el token ya
+revocado, dispara la detección de reuso, y revoca toda la familia de
+tokens. Esto es un problema de la lógica de rotación de refresh
+tokens (Fase 2), no de qué router se usa para renderizar rutas —
+confirmado repitiendo la verificación con navegación client-side
+realista (clicks en vez de `goto()` en cadena), donde logout/rutas
+protegidas/rutas públicas funcionan exactamente como se espera. Se
+deja documentado como hallazgo nuevo, no se intenta arreglar en este
+commit — es código de seguridad sensible (rotación + detección de
+reuso de tokens) que merece su propia pasada deliberada, no algo para
+mezclar con una migración de router.
+
+### Verificación de la migración de react-router
+
+- `pnpm --filter web run build` / `lint` / `test` — verde.
+- `pnpm turbo run lint build test --force` — 9/9 tareas verdes en todo
+  el monorepo.
+
+### Fix: race de rotación de refresh tokens (el hallazgo de arriba)
+
+El hallazgo documentado arriba se investigó hasta encontrar la causa
+raíz real, no solo la hipótesis. No era el `goto()` en rápida
+sucesión en sí — era **`StrictMode`**: en desarrollo, React invoca
+dos veces el efecto de montaje de un componente (monta → limpia →
+monta de nuevo) para exponer efectos impuros, y el efecto de
+restauración de sesión de `AuthContext` no tiene función de limpieza.
+Resultado: cada carga de página en dev disparaba **dos** `POST
+/auth/refresh` concurrentes compartiendo la misma cookie de refresh
+token, todavía no rotada por ninguno de los dos. El servidor procesa
+la segunda llegada como reuso de un token ya rotado por la primera —
+exactamente el comportamiento correcto de la defensa de detección de
+reuso (ADR 0004) ante un robo real de token — y revoca toda la
+familia, deslogueando en silencio a un usuario que apenas cargó la
+página por primera vez.
+
+Confirmado experimentalmente contando requests de red antes de
+cualquier cambio: una sola carga de página disparaba 2 llamadas a
+`/auth/refresh` con timestamps casi idénticos.
+
+- **Fix, deliberadamente acotado al cliente**: un guard con
+  `useRef(false)` en el efecto de montaje de `AuthContext`, en
+  `apps/web` y `apps/mobile`. El ref sobrevive el remontaje simulado
+  de `StrictMode` (solo se re-ejecuta el cuerpo del efecto, el estado
+  del componente no se resetea), así que limita el trabajo real de
+  restauración de sesión a una sola llamada por montaje real. No se
+  tocó la lógica de rotación/detección de reuso del servidor (Fase 2) — sigue siendo la misma defensa de seguridad, sin debilitar.
+  `apps/mobile` no tenía un repro confirmado (no usa `StrictMode` de
+  la misma forma), pero se aplicó el mismo guard de forma preventiva:
+  mismo patrón de bug latente, mismo fix de bajo costo, defensa en
+  profundidad directamente conectada al hallazgo.
+- **Test de regresión** en
+  `apps/web/src/context/AuthContext.test.tsx`, renderizando el
+  `AuthProvider` envuelto en `<StrictMode>` y verificando que
+  `fetch` reciba exactamente una llamada a `/auth/refresh`. Se
+  confirmó que el test es un guard válido: se revirtió temporalmente
+  solo el archivo del fix (`git stash push` de un único archivo,
+  dejando el test nuevo en su lugar) y el test falló con el mensaje
+  esperado (`expected [...] to have a length of 1 but got 2`);
+  restaurado el fix, vuelve a pasar.
+- **Verificado en vivo** contra el servidor de desarrollo real con
+  Playwright (`verify-double-refresh.mjs`): antes del fix, una sola
+  carga de página disparaba 2 llamadas a `/auth/refresh`; después del
+  fix, exactamente 1. También se repitió la recarga simple/secuencial
+  (F5 dos veces seguidas) confirmando que la sesión se mantiene
+  autenticada en ambas, y el flujo de logout por navegación
+  client-side sigue limpio.
+
+**Alcance explícitamente dejado fuera, con honestidad**: existe una
+segunda race, más angosta y distinta de esta, reproducible solo con
+recargas de página completas (`goto()`) en sucesión muy rápida —
+mucho más rápida que cualquier interacción humana real — donde una
+recarga nueva puede interrumpir la recepción del `Set-Cookie` de la
+rotación anterior antes de que el navegador la procese. Arreglar esa
+race de raíz requeriría tocar la lógica de rotación/detección de
+reuso del lado del servidor (Fase 2, código de seguridad sensible),
+lo cual excede el alcance de este fix — que se mantuvo
+deliberadamente del lado del cliente. Se deja documentado como
+brecha conocida, no oculta.
+
+#### Verificación de este fix
+
+- `pnpm --filter web run test` — 15/15 verde (incluye el test de
+  regresión nuevo).
+- `pnpm --filter web run build` / `lint` — verde.
+- `pnpm turbo run lint build test --force` — 9/9 tareas verdes en
+  todo el monorepo.
+- Verificación en vivo con Playwright contra el dev server real:
+  `verify-double-refresh.mjs` (1 sola llamada a `/auth/refresh` por
+  carga, antes eran 2),
+  `verify-single-reload-stays-authenticated.mjs` (dos F5 seguidos,
+  sesión se mantiene autenticada en ambos), `verify-logout-clean.mjs`
+  (logout por navegación client-side sigue limpio).
+
+### Auditoría de dependencias, segunda pasada
+
+Una nueva corrida de `pnpm audit --prod` (auditoría vive contra la
+base de datos de advisories, cambia con el tiempo — no es la misma
+lista que la del cierre de Fase 9 original) mostró 13
+vulnerabilidades, la mayoría en dependencias **transitivas** que
+`@nestjs/config`, `@nestjs/swagger`, `@nestjs/common` y
+`@nestjs/platform-express` fijan a una versión exacta más vieja que
+la parchada — no algo que un simple `pnpm update` resuelva, porque el
+`package.json` de esos paquetes de NestJS pide la versión exacta
+vulnerable.
+
+- **10 de las 13, corregidas** con `pnpm.overrides` en el
+  `package.json` raíz, targeteando la versión exacta vulnerable como
+  clave (no el nombre del paquete a secas) para no arrastrar
+  resoluciones no relacionadas — por ejemplo `js-yaml` tiene tres
+  instancias en el árbol (3.15.1 vía Jest, 4.1.0 vía
+  `@nestjs/swagger` — la vulnerable —, 4.3.1 vía ESLint — ya sana);
+  el override solo apunta a la 4.1.0:
+  - `lodash@4.17.21 → ^4.18.1` (vía `@nestjs/config`,
+    `@nestjs/swagger` — inyección de código en `_.template` y dos
+    prototype-pollution).
+  - `js-yaml@4.1.0 → ^4.3.1` (vía `@nestjs/swagger` — CPU cuadrático
+    y prototype-pollution en `merge`).
+  - `file-type@20.4.1 → ^21.3.2` (vía `@nestjs/common` — loop
+    infinito parseando ASF, DoS por bomba de descompresión ZIP).
+  - `qs@6.14.2 → ^6.15.3` / `body-parser@1.20.4 → ^1.20.6` (vía
+    `express`/`@nestjs/platform-express` — DoS en `stringify`,
+    enforcement de límite de tamaño que se desactivaba en silencio
+    con un valor de `limit` inválido).
+  - `multer@2.0.2 → ^2.2.0` (vía `@nestjs/platform-express` — cuatro
+    CVEs de denegación de servicio, incluyendo limpieza incompleta de
+    subidas abortadas y anidamiento profundo de campos). Este es el
+    único de los seis con superficie de ataque real y directa en esta
+    app — es la librería que procesa las subidas de fotos de
+    adjuntos de jobs (Fase 9) —, así que mereció su propia
+    verificación dirigida, no solo confiar en que "es un bump menor":
+    `test/job-attachments.e2e.spec.ts` (que ejercita el flujo de
+    subida real contra la API) sigue en verde después del bump.
+  - Todos son bumps de parche o menor dentro del mismo major de cada
+    paquete — ninguno cambia una API que este proyecto use
+    directamente (son dependencias de dependencias, nunca importadas
+    por código propio).
+- **3 de las 13, dejadas fuera de esta pasada deliberadamente** —
+  cada una requeriría una migración mayor de versión, con su propio
+  riesgo de romper algo y su propia verificación dedicada, no algo
+  para mezclar con bumps de parche:
+  - **`@nestjs/core`** necesita `>=11.1.18` — es decir, terminar la
+    migración de NestJS 10→11 completa (Express v5, sintaxis de rutas
+    de `path-to-regexp` v8), ya identificada como pendiente desde el
+    cierre de Fase 9 original.
+  - **`react-router`** necesita `>=8.3.0` — una migración 7→8 nueva,
+    no identificada hasta ahora (la migración 6→7 de este mismo
+    documento ya quedó verificada y cerrada; esta es otra, posterior).
+  - **`fast-xml-parser`** necesita `>=5.7.0` — enterrada dentro del
+    propio toolchain de Android de React Native
+    (`@react-native-community/cli-platform-android`), una herramienta
+    de build de desarrollo, no código de runtime de la app. No se
+    forzó el override: es un salto de major (4→5) en una herramienta
+    de terceros sin dispositivo/emulador disponible en este entorno
+    para verificar que el build de Android siga funcionando después.
+
+`pnpm audit --prod`: 13 → 3 vulnerabilidades (las tres migraciones
+mayores de arriba).
+
+#### Verificación de esta pasada de dependencias
+
+- `pnpm install` limpio con los overrides aplicados.
+- `pnpm turbo run lint build test --force` — 9/9 tareas verdes en
+  todo el monorepo, incluyendo `test/job-attachments.e2e.spec.ts`
+  (multer + file-type, verificado en vivo contra Postgres real) y el
+  resto de la suite de 54 tests de `apps/api`.
+- `pnpm audit --prod`: 13 → 3, las tres restantes documentadas arriba
+  como migraciones mayores fuera de alcance.
+
+### Migración: `react-router` 7→8 (y lo que arrastró: React 19, Vite 7)
+
+Al evaluar esta migración (identificada en la pasada de auditoría de
+dependencias de arriba) se descubrió que **no es un bump aislado del
+router**, a diferencia de la 6→7 anterior: `react-router@8.3.0`
+declara `peerDependencies` de `react`/`react-dom` `>=19.2.7` y
+`engines.node >=22.22.0`, y el paquete separado `react-router-dom` se
+discontinuó — todo se unificó en el paquete `react-router` (`import
+... from 'react-router'`, sin más `react-router-dom`). Vite 7 (el
+build tool) también exige Node `>=20.19`/`>=22.12`, ya cubierto por
+este entorno. El diagnóstico completo se le presentó al stakeholder
+antes de tocar nada, porque cambiaba el perfil de riesgo que se
+había asumido inicialmente (de "bump de router" a "tres migraciones
+mayores encadenadas: React 18→19, Vite 5→7, router 7→8"); autorizó
+seguir con las tres en la misma pasada.
+
+- **React 18.3.1 → 19.2.8, Vite 5.4.8 → 7.3.6, `react-router-dom`
+  7.18.2 → `react-router` 8.3.0** en `apps/web`. `@vitejs/plugin-react`
+  4→5, `vitest` 2→4, `@vitest/coverage-v8` 2→4 (todos con soporte de
+  Vite 7 confirmado contra sus propios `peerDependencies` antes del
+  bump). `@testing-library/react` 16.3.2 ya soportaba React 19 sin
+  cambios. `@types/react`/`@types/react-dom` a las versiones 19
+  correspondientes.
+- El código ya usaba patrones compatibles con React 19 desde antes
+  (`createRoot`, sin `ReactDOM.render`, sin `PropTypes`, sin
+  `defaultProps` en componentes de función, sin refs de string) —
+  verificado por grep antes de asumir que el bump sería limpio. El
+  único ajuste real de código: `@types/react` 19 eliminó el
+  namespace global `JSX` (vive ahora en `React.JSX`), así que los 24
+  archivos que anotaban `: JSX.Element` como tipo de retorno
+  necesitaron importar `type { JSX } from 'react'` explícitamente —
+  mecánico, sin cambio de comportamiento.
+- Los 10 imports de `react-router-dom` en `apps/web/src` pasaron a
+  `react-router` — confirmado antes de tocar código que `BrowserRouter`,
+  `Route`, `Routes`, `Navigate`, `Outlet`, `NavLink`, `Link`,
+  `useNavigate`, `useSearchParams`, `useParams` (todo lo que esta app
+  usa) siguen exportados desde el paquete principal `react-router`,
+  no desde el sub-path `react-router/dom` (ese sub-path es solo para
+  APIs de router de datos — `RouterProvider`, `HydratedRouter` —, que
+  esta app no usa).
+- Bundle inicial creció de 195.77 kB (64.13 kB gzip) a 244.39 kB
+  (78.45 kB gzip) — el runtime de React 19 más el paquete unificado
+  de router 8 (que trae `cookie-es` como dependencia nueva) son más
+  grandes. Aceptado, mismo razonamiento que la migración anterior: es
+  el costo de estar en versiones soportadas y sin vulnerabilidades
+  conocidas, no una regresión de rendimiento buscada.
+- **Verificado en vivo con Playwright** con navegación realista
+  (clicks, no `goto()` encadenados): los 6 links de navegación
+  operativa, las tarjetas del dashboard, el toggle List/Calendar de
+  Jobs, atrás/adelante del navegador vía clicks + History API,
+  logout, redirección de rutas protegidas a `/login`, y
+  `/forgot-password` público. Consola limpia salvo el único 400 ya
+  conocido y esperado (`POST /auth/refresh` sin cookie en el primer
+  `GET /login` de un visitante nuevo — comportamiento por diseño, no
+  un error).
+- **Un primer intento de verificación con el script heredado de la
+  migración 6→7** (que sí encadena varios `goto()` de recarga
+  completa seguidos) reprodujo el 401/logout silencioso de la race ya
+  documentada arriba, en su forma original: confirma que sigue viva
+  y sin tocar, no que esta migración la haya introducido — se
+  reconfirmó corriendo la misma secuencia con navegación realista
+  (clicks), que pasó limpio.
+
+`pnpm audit --prod`: 3 → 2 (resuelve `GHSA-qwww-vcr4-c8h2`,
+react-router RSC-mode CSRF bypass — que esta app no ejercitaba, al no
+usar RSC, pero igual cerraba el hallazgo del audit).
+
+#### Verificación de esta migración
+
+- `pnpm --filter web run build` / `lint` / `test` — verde (15/15
+  tests, incluyendo el de regresión de StrictMode del fix anterior).
+- `pnpm turbo run lint build test --force` — 9/9 tareas verdes en
+  todo el monorepo.
+- `pnpm audit --prod`: 3 → 2 vulnerabilidades.
+- Verificación en vivo con Playwright contra el dev server real
+  (Vite 7, React 19), navegación realista: sin errores de consola
+  nuevos, todos los flujos operativos y de auth intactos.
+
+### Observabilidad real: logging estructurado + error tracking
+
+Hasta este punto, si algo fallaba en producción nadie se enteraba —
+`apps/api` no tenía más que el logger de consola por defecto de
+Nest, y ningún unhandled exception se reportaba a ningún lado. Este
+addendum cierra esa brecha, deliberadamente separado de cualquier
+migración de dependencias (es funcionalidad nueva, no un bump).
+
+- **Logging estructurado** (`nestjs-pino`): reemplaza el logger por
+  defecto de Nest en toda la app (`app.useLogger()` en `main.ts`,
+  con `bufferLogs: true` para no perder los logs de arranque
+  mientras se resuelve la instancia real). JSON en producción/test,
+  pretty-printed solo en desarrollo local — y explícitamente nunca
+  bajo Jest (`!process.env.JEST_WORKER_ID`), porque el transporte
+  `pino-pretty` corre en un worker thread que no cierra limpio entre
+  archivos de test. **Redacta credenciales**: `Authorization`,
+  `Cookie`, `Set-Cookie`, y los campos `password`/`newPassword`/
+  `token`/`refreshToken`/`selectionToken` del body — se armó la
+  lista revisando los DTOs reales de `modules/auth/dto/`, no
+  adivinando. `GET /health` queda excluido del access log (es un
+  ping de infraestructura, no una request de negocio) vía
+  `autoLogging.ignore`.
+- **`ErrorReportingService`** (`modules/observability/`): mismo
+  patrón de proveedor-por-factory que `EmailService`
+  (`SmtpEmailService`/`ConsoleEmailService`) — `SentryErrorReportingService`
+  se une cuando `SENTRY_DSN` está configurado, `NoopErrorReportingService`
+  (avisa una sola vez, no revienta) en caso contrario. Mismo estándar
+  de honestidad que Stripe/SMTP: no existe una cuenta real de Sentry
+  en este proyecto, así que `Sentry.init()`/`captureException()` son
+  llamadas reales contra el SDK real, pero la entrega real a un
+  proyecto de Sentry queda sin verificar — solo se verificó que el
+  binding de DI elige el servicio correcto según `SENTRY_DSN`.
+- **`AllExceptionsFilter`** (`common/filters/`, registrado global vía
+  `APP_FILTER`): extiende `BaseExceptionFilter` y delega la
+  respuesta HTTP real a `super.catch()` — este filtro solo añade
+  logging/reporting como efecto secundario, nunca cambia lo que
+  recibe el caller (los tests existentes de validación/errores no se
+  tocaron ni necesitaron tocarse). 5xx se loguea `error` + se
+  reporta a `ErrorReportingService`; 4xx se loguea `warn` y no se
+  reporta (son errores de request normales, no bugs de la
+  aplicación).
+- **Handlers a nivel de proceso** (`main.ts`): `uncaughtException`
+  (loguea, reporta, y `process.exit(1)` — Node sigue corriendo en
+  estado posiblemente corrupto por defecto, dejar que el orquestador
+  reinicie es más seguro) y `unhandledRejection` (loguea y reporta,
+  sin salir — muchos rejections no son fatales). **Hallazgo real
+  mientras se verificaba esto**: registrar un handler de
+  `unhandledRejection` suprime el comportamiento por defecto de
+  Node de terminar el proceso ante un rejection no manejado —
+  reproducido en vivo apagando Postgres antes de levantar la API: el
+  `bootstrap()` fallaba, el nuevo handler lo logueaba correctamente,
+  pero el proceso quedaba zombie (vivo, sin escuchar en ningún
+  puerto) en vez de terminar, que es peor para un orquestador de
+  contenedores (un proceso "vivo" no dispara su política de
+  reinicio). Arreglado con un `.catch()` explícito en la propia
+  llamada a `bootstrap()` que loguea a consola simple (el logger real
+  puede no existir todavía si lo que falló fue `NestFactory.create()`
+  en sí) y hace `process.exit(1)` — un fallo de arranque es un caso
+  distinto de un rejection en estado estable, y debe ser siempre
+  fatal.
+- **`ErrorBoundary`** (`apps/web`): la SPA no tenía ninguno — un
+  error de render en cualquier parte del árbol dejaba una página en
+  blanco sin recuperación ni registro. Se agregó envolviendo toda la
+  app en `main.tsx` (componente de clase — `componentDidCatch`/
+  `getDerivedStateFromError` no tienen equivalente en hooks),
+  logueando a consola y mostrando una pantalla de recuperación con
+  botón de recarga en vez de una página en blanco. **Fuera de
+  alcance, explícitamente**: un SDK de Sentry en el navegador
+  (mirroring del lado del backend) — se dejó de este lado para no
+  inflar esta pasada; queda documentado como brecha conocida, no
+  omitida en silencio.
+
+Verificado en vivo contra la API real (no solo con tests): con
+Postgres caído, el `unhandledRejection`/bootstrap-catch se disparó
+tal como se esperaba (ver hallazgo arriba). Con la API sana, se
+forzó un 404 real (`GET /ruta-inexistente`) y un 500 real
+(`GET /clients/no-es-un-uuid` con un token válido) contra el server
+corriendo: el 404 logueó `warn` con contexto de request y no
+reportó; el 500 logueó `error` con el stack completo, el header
+`Authorization` salió como `[REDACTED]`, `NoopErrorReportingService`
+avisó una sola vez (no una vez por request, gracias al flag interno)
+que no hay `SENTRY_DSN`, y el cuerpo de la respuesta al cliente
+siguió siendo `{"statusCode":500,"message":"Internal server error"}`
+— sin fuga de stack trace, exactamente el comportamiento por defecto
+de Nest de antes de este cambio.
+
+#### Verificación de este addendum
+
+- Tests nuevos: `AllExceptionsFilter` (5xx vs 4xx, log level,
+  reporte condicional, delegación a `BaseExceptionFilter`),
+  `SentryErrorReportingService` (init + captureException),
+  `NoopErrorReportingService` (no revienta, avisa una sola vez),
+  `ObservabilityModule` (el factory elige el proveedor correcto
+  según `SENTRY_DSN`) en `apps/api`; `ErrorBoundary` (renderiza
+  hijos normalmente, cae a la pantalla de fallback, loguea, botón de
+  recarga funciona) en `apps/web`.
+- `pnpm --filter api run test`: 65/65 verde (54 previos + 11
+  nuevos). `pnpm --filter web run test`: 19/19 verde (15 previos +
+  4 nuevos).
+- `pnpm turbo run lint build test --force`: 9/9 tareas verdes en
+  todo el monorepo.
+- Suite de tests de `apps/api` silenciada explícitamente
+  (`LOG_LEVEL=silent` inyectado vía un `setupFiles` nuevo en
+  `jest.config.js`) — sin esto, cada request de cada test emitía una
+  línea JSON completa, ahogando la salida de Jest; no afecta a
+  desarrollo ni producción.
+- `docs:check-readmes`: 21 módulos, todos con README (incluye el
+  nuevo `modules/observability/`).
+- `.env.example` actualizado con `LOG_LEVEL`, `SENTRY_DSN`,
+  `SENTRY_TRACES_SAMPLE_RATE`, siguiendo el mismo patrón comentado
+  que Stripe/SMTP.
+
+### Migración: NestJS 10→11
+
+La última brecha grande deliberadamente diferida desde el cierre de
+Fase 9 original. Antes de tocar nada se investigó la superficie real
+de cambios incompatibles contra **este código específico**, no contra
+NestJS 11 en abstracto — el mismo método que ya había dado buenos
+resultados para las migraciones de react-router y de dependencias:
+
+- **Express v5 + `path-to-regexp` v8**: el riesgo real citado en cada
+  cierre anterior. Se revisaron los ~75 decoradores `@Get`/`@Post`/
+  `@Patch`/`@Delete` y los 18 prefijos `@Controller` de todo
+  `apps/api/src` — ninguno usa rutas comodín (`*`), parámetros
+  opcionales (`:id?`) ni regex de ruta; todos son segmentos estáticos
+  o `:param` simples, exactamente el subconjunto que `path-to-regexp`
+  v8 sigue aceptando sin cambios. Tampoco hay `express.static`/
+  `useStaticAssets` (los adjuntos de jobs se sirven por una ruta de
+  controller normal, no por middleware estático) ni `app.use()` con
+  patrones de ruta (solo `helmet()`/`compression()`/`cookieParser()`,
+  funciones de middleware agnósticas de la versión de Express).
+- **`nestjs-cls`**: hallazgo real de la investigación — la versión
+  fija en el lockfile (`^4.4.1`) declara `peerDependencies` con
+  `@nestjs/core: "> 7.0.0 < 11"`, es decir, **no soporta Nest 11**.
+  Esta librería es el mecanismo central de tenant-context
+  (`AsyncLocalStorage` por request — ver
+  docs/architecture/multi-tenancy.md), así que un bloqueo real, no
+  cosmético. `nestjs-cls@6.2.1` sí soporta `>= 10 < 12`; se revisó su
+  `.d.ts` publicado antes del bump (no el changelog resumido) para
+  confirmar que `ClsModule.forRoot({ global, middleware: { mount } })`
+  y `ClsService.get(key)`/`.set(key, value)` — las únicas superficies
+  que usa `TenantTransactionInterceptor`/`TenantContextService` —
+  siguen exactamente iguales entre 4.x y 6.x.
+- Todas las demás dependencias de Nest tienen versión 11-compatible
+  publicada (`@nestjs/config` 4, `@nestjs/jwt`/`@nestjs/passport` 11,
+  `@nestjs/swagger` 11, `@nestjs/cli`/`@nestjs/testing` 11);
+  `@nestjs/schedule`/`@nestjs/throttler` no necesitaron bump — sus
+  `peerDependencies` ya cubrían `^10.0.0 || ^11.0.0`. `multer@2.2.0`
+  y `@types/multer@2.2.0` (ya bumpeados en la pasada de seguridad
+  anterior) resultan ser exactamente lo que `@nestjs/platform-express@11`
+  trae de fábrica. `@types/express` pasó de la línea 4.x a 5.x.
+- **Resultado del bump**: `pnpm install` limpio, sin warnings de peer
+  deps. `tsc --noEmit` y `nest build`: **cero errores, sin tocar una
+  sola línea de código de aplicación** — solo `package.json`. Explica
+  por qué la investigación previa importaba más que la ejecución: el
+  riesgo real de esta migración para _este_ proyecto siempre estuvo
+  en "¿usamos alguna sintaxis/API que cambió", y la respuesta,
+  verificada en vez de asumida, fue no.
+- **Hallazgo nuevo de seguridad durante la migración**:
+  `@nestjs/swagger@11` trae una versión más nueva de `js-yaml`
+  (5.2.1) con su propia vulnerabilidad no relacionada con la que ya
+  se había parchado antes (esa era la 4.1.0). Mismo patrón de
+  `pnpm.overrides` targeteado a la versión exacta: `js-yaml@5.2.1 →
+^5.2.3`. El override viejo (`js-yaml@4.1.0`) se retiró por quedar
+  sin ningún resolutor que lo pidiera — dejarlo hubiera sido config
+  muerta.
+
+`pnpm audit --prod`: 2 → 1 (resuelve `GHSA-36xv-jgw5-4q75` de
+`@nestjs/core`, la única vulnerabilidad de `apps/api` que quedaba; el
+`fast-xml-parser` del toolchain de Android de `apps/mobile` sigue
+siendo la única brecha de dependencias restante en todo el monorepo).
+
+#### Verificación de esta migración
+
+- `pnpm turbo run lint build test --force`: 9/9 verde, incluyendo
+  `tenant-scoping.integration.spec.ts` (la prueba de aislamiento
+  cross-tenant contra Postgres real) y `job-attachments.e2e.spec.ts`
+  (multer).
+- `pnpm docs:api`: el OpenAPI regenerado es idéntico en contenido —
+  el único diff es un reordenamiento cosmético de las claves
+  `tags`/`security` en el YAML (@nestjs/swagger 11 serializa el
+  documento en otro orden interno; mismo contrato semánticamente).
+- **Verificado en vivo contra el servidor real** (no solo con
+  tests), con Express 5 confirmado corriendo (`node_modules/.pnpm/
+express@5.2.1`, no la 4.x que queda en el árbol solo por otras
+  dependencias no relacionadas):
+  - Signup, `POST /clients`, `GET /clients/:id`, `PATCH /clients/:id`
+    y la ruta anidada `POST /clients/:id/addresses` — todas con
+    parámetros de ruta, el punto que más preocupaba de Express 5.
+  - **Aislamiento cross-tenant reconfirmado con dos organizaciones
+    reales**: la organización B pidiendo el cliente de la
+    organización A por id devuelve 404 (no los datos), y su propio
+    listado de clientes sale vacío — el mecanismo completo
+    (`nestjs-cls` + `TenantTransactionInterceptor` + RLS) sigue
+    intacto de punta a punta.
+  - Factura + `GET /invoices/:id/pdf` → PDF real y válido (`pdfkit`
+    sobre el nuevo Express).
+  - Job + subida de foto de adjunto (`POST /jobs/:id/attachments`,
+    `multer`) → 201.
+  - `POST /webhooks/stripe` (raw body vía `rawBody: true`, el punto
+    donde Express 4→5 podría romper el parseo de body crudo) →
+    503 esperado (sin `STRIPE_WEBHOOK_SECRET`), no un crash — el
+    raw body llega intacto al handler.
+  - 404 y 500 forzados: `AllExceptionsFilter`/`nestjs-pino`/
+    `NoopErrorReportingService` (el addendum de observabilidad de
+    arriba) siguen funcionando exactamente igual bajo Express 5 —
+    mismo log estructurado, misma redacción de `Authorization`,
+    mismo cuerpo de respuesta sin fuga de stack trace.
+  - `GET /api/docs` (Swagger UI) sigue sirviendo.
+
+### Cierre del addendum de observabilidad: Sentry en `apps/web`
+
+El único punto que se había dejado fuera deliberadamente de la
+pasada de observabilidad. `initSentry()`/`captureException()`
+(`src/observability/sentry.ts`) mirrorean exactamente el patrón del
+backend: `Sentry.init({ dsn: import.meta.env.VITE_SENTRY_DSN })` —
+sin DSN configurado, `Sentry.init` con `dsn: undefined` es en sí
+mismo un no-op seguro del propio SDK (no hace falta una
+implementación no-op separada como en el backend, donde el
+`ErrorReportingService` necesitaba dos clases porque el punto de
+inyección era un provider de Nest). `ErrorBoundary.componentDidCatch`
+ahora también llama `captureException()` además de loguear a
+consola. Mismo estándar de honestidad que el resto del proyecto: sin
+cuenta real de Sentry, así que la entrega real queda sin verificar —
+solo se verificó que la llamada al SDK es correcta en ambas ramas
+(con y sin DSN).
+
+**Costo real, no oculto**: el bundle inicial creció de 244.39 kB
+(78.68 kB gzip) a 331.87 kB (108.01 kB gzip) — un salto de ~37% en
+gzip, considerablemente más que cualquier bump de versión anterior
+en este documento. El SDK de Sentry para navegador es pesado incluso
+sin usar sus features de tracing/session-replay explícitamente,
+porque vive en el punto de entrada principal (se inicializa antes
+del primer render, para poder capturar cualquier error desde el
+arranque) y por eso no puede beneficiarse del code-splitting por
+ruta que ya tiene esta app. Es una compensación real: observabilidad
+del lado del cliente a cambio de un load inicial más pesado, para un
+proyecto que hoy no tiene cuenta real de Sentry para beneficiarse de
+ella. Se documenta explícitamente en vez de mencionarlo de pasada,
+para que quede claro que fue una decisión, no un descuido.
+
+Verificado en vivo con Playwright contra el dev server real, en dos
+configuraciones — sin `VITE_SENTRY_DSN` y con una DSN de prueba con
+formato válido pero no real —: la página de login renderiza limpio
+en ambos casos, sin errores de consola atribuibles al SDK de Sentry
+(el único error visto en la segunda corrida fue un CORS esperado por
+correr ese servidor en un puerto distinto al configurado en
+`CORS_ORIGIN`, no relacionado).
+
+#### Verificación de este cierre
+
+- Tests nuevos: `sentry.ts` (init con/sin DSN, `captureException` con/
+  sin component stack) y la aserción nueva en `ErrorBoundary.test.tsx`
+  (reporta a Sentry al capturar un error) — mockeando `@sentry/react`,
+  mismo patrón que los tests del backend mockeando `@sentry/node`.
+- `pnpm --filter web run build`/`lint`/`test`: verde, 24/24 tests
+  (19 previos + 5 nuevos).
+- `pnpm turbo run lint build test --force`: 9/9 verde en todo el
+  monorepo.
+- Verificación en vivo con Playwright: página de login limpia con y
+  sin `VITE_SENTRY_DSN` configurado.
+
+### Cobertura de tests: medición real + regression guard en `apps/api`
+
+`@vitest/coverage-v8` estaba instalado en `apps/web` desde hace
+varias fases sin estar conectado a nada — una dependencia muerta, sin
+`coverage` en el `test` block de `vite.config.ts` ni script para
+correrla. `apps/api` no tenía configuración de cobertura de Jest en
+absoluto. Ninguno de los dos daba visibilidad real de qué fracción
+del código está probada.
+
+Antes de decidir cualquier threshold se midió la cobertura real de
+cada app (no se inventó un número):
+
+- **`apps/api`: 82.18% statements / 80.87% lines / 68.48% functions /
+  49.21% branches** — un número real y sólido, esperable de una suite
+  con 65 tests que incluye e2e/integración contra Postgres real, no
+  solo unitarios. `jest.config.js` ahora tiene `collectCoverageFrom`
+  - `coverageThreshold` fijado unos puntos por debajo de ese
+    baseline medido (78/77/65/46) — suficiente margen para no romper
+    con fluctuaciones menores, pero un guardrail real contra
+    regresiones. **Verificado que el gate realmente frena algo, no
+    solo que existe**: se subió el umbral de `statements` a 99%
+    temporalmente, se confirmó que Jest falla con exit code 1 y el
+    mensaje exacto `"global" coverage threshold for statements (99%)
+not met: 82.18%`, y se revirtió — mismo método de falsabilidad que
+    se usó para el test de regresión de StrictMode más arriba en este
+    documento.
+- **`apps/web`: 6.48% statements / 5.52% branches** — la cobertura
+  real es baja porque casi ninguna página tiene test de componente
+  (`ClientsPage`, `JobsPage`, `InvoicesPage`, `ServicesPage`,
+  `StaffPage`, `LoginPage`, `DashboardPage`, `AppLayout`, `Modal`,
+  `Field`, `Pagination`, `NotificationBell`, `JobsCalendarView`, el
+  routing de `App.tsx` — todas en 0%); lo que sí está cubierto es
+  lógica pura (`formatPrice`/`formatLimit` de `BillingPage`,
+  `decodeJwtRole` de `client.ts`) y los pocos componentes con test
+  dedicado (`AuthContext`, `ErrorBoundary`, `sentry.ts`). **Se
+  decidió no ponerle un threshold que bloquee CI**: al 6% sería un
+  guardrail sin sentido (no protege nada real), y subirlo a un
+  número que sí proteja algo requeriría escribir tests de componente
+  para prácticamente toda la capa de páginas — un esfuerzo bastante
+  más grande que "conectar la config de cobertura", y una decisión
+  de alcance que le corresponde al stakeholder, no algo para meter
+  de forma implícita en esta pasada. Se conecta el `coverage`
+  provider (`v8`) igual, para que al menos el número real quede
+  visible en cada corrida en vez de ser una incógnita.
+- CI (`.github/workflows/ci.yml`) corre `pnpm --filter @dos/api run
+test:coverage` (con gate real) y `pnpm --filter @dos/web run
+test:coverage` (solo reporte, sin gate) después de la suite normal,
+  y sube ambos `lcov.info` como artifact — visibles en cada corrida
+  sin tener que reproducir la medición localmente.
+
+#### Verificación de este addendum
+
+- `pnpm --filter api run test:coverage`: 65/65 verde, umbrales
+  cumplidos con margen real (82.18% ≥ 78%, etc.).
+- Falsabilidad del gate confirmada (ver arriba): sube y falla, baja y
+  pasa.
+- `pnpm --filter web run test:coverage`: 24/24 verde, reporte
+  generado sin gate.
+- `pnpm turbo run lint build test --force`: 9/9 verde — la suite
+  normal (`pnpm run test`, sin `--coverage`) no cambió de
+  comportamiento, el gate solo corre en el script dedicado y en CI.
+
+### Cobertura de tests: cierre de la brecha en `apps/web`
+
+El addendum anterior dejó `apps/web` deliberadamente sin gate de
+cobertura, documentando que subirlo de forma significativa
+"requeriría escribir tests de componente para prácticamente toda la
+capa de páginas — un esfuerzo bastante más grande que 'conectar la
+config de cobertura'". Este addendum es exactamente ese esfuerzo:
+tests de RTL/Vitest para cada página y componente compartido que
+antes no tenía ninguno — `LoginPage`, `ForgotPasswordPage`,
+`ResetPasswordPage`, `VerifyEmailPage`, `AcceptInvitationPage`,
+`DashboardPage`, `ClientsPage`, `ServicesPage`, `StaffPage`,
+`JobsPage`, `InvoicesPage`, `MyJobsPage`, `MyInvoicesPage`,
+`BillingPage` (que solo tenía tests de sus funciones puras
+`formatPrice`/`formatLimit`, ahora también de la página completa:
+banners de checkout, error 503/403, redirect a Stripe), `App.tsx`
+(el routing raíz — `RequireAuth`, redirect a `/login`, el layout
+compartido detrás de rutas autenticadas, la diferencia de shortcuts
+por rol), `AppLayout`, `NotificationBell`, `Modal`, `Field`,
+`Pagination`, `Button`, `AuthCard`, y `JobsCalendarView` (incluyendo
+drag-and-drop nativo de reprogramación).
+
+**Cobertura medida, antes/después:**
+
+| Métrica    | Antes (addendum anterior) | Después |
+| ---------- | ------------------------- | ------- |
+| Statements | 6.48%                     | 84.8%   |
+| Branches   | 5.52%                     | 77.53%  |
+| Functions  | — (no medida)             | 76.27%  |
+| Lines      | — (no medida)             | 88.23%  |
+
+**Threshold real, con la misma disciplina de falsabilidad que
+`apps/api`:** `vite.config.ts` ahora fija
+`test.coverage.thresholds` en `{ statements: 82, branches: 75,
+functions: 73, lines: 85 }` — unos puntos por debajo del baseline
+medido arriba, mismo margen que el patrón ya usado en
+`jest.config.js`. Verificado que el gate frena algo de verdad: se
+subieron los cuatro umbrales a 99% temporalmente, `pnpm run
+test:coverage` falló con exit code 1 y un mensaje `ERROR: Coverage
+for <métrica> (X%) does not meet global threshold (99%)` por cada
+una de las cuatro, y se revirtió a los valores reales. CI
+(`.github/workflows/ci.yml`) pasó de "Web test coverage (reporting
+only, not yet gated)" a "Web test coverage (enforced)" — mismo
+tratamiento que ya tenía `apps/api`.
+
+**Un bug real de la aplicación, encontrado escribiendo el test de
+`ForgotPasswordPage`:** el `try { await apiFetch(...) } finally
+{...}` no tenía `catch`. La intención (documentada en un comentario
+ya existente) era "mostrar siempre el mismo resultado, éxito o
+fallo, igual que el propio comportamiento de la API de nunca revelar
+si la dirección existe" — pero sin `catch`, una petición fallida
+seguía propagándose como una promise rejection no manejada fuera del
+handler de React en vez de ser absorbida silenciosamente. Esto no
+rompía la UI (React no tiene un error boundary para rejections no
+capturadas en un handler de evento), pero ahora que `apps/web` tiene
+el SDK de Sentry conectado (ver el cierre del addendum de
+observabilidad más arriba en este documento), una unhandled
+rejection real se habría reportado a Sentry como si fuera un error
+genuino de la aplicación cada vez que un usuario pidiera un reset de
+password y la API fallara — ruido falso en el canal de errores de
+producción. Corregido con un `catch {}` vacío explícito. Se revisó
+(por grep) el resto de `apps/web/src/pages/*.tsx` para el mismo
+patrón de `finally` sin `catch` — este fue el único caso.
+
+**Notas de infraestructura de test (no son bugs de la app, son
+límites de jsdom que hubo que rodear):**
+
+- `HTMLDialogElement.prototype.showModal`/`.close` no existen en
+  jsdom (`Modal.tsx` depende de ambos) — polyfill agregado una sola
+  vez en `src/test-setup.ts`, no por archivo de test, porque
+  cualquier componente futuro basado en `<dialog>` pisaría el mismo
+  hueco.
+- `new Response(blob, ...)` con un `Blob` global de jsdom rompe
+  dentro de `response.blob()` con `object.stream is not a function`
+  — un gap cross-realm de jsdom. Los mocks de descarga de PDF usan un
+  body de tipo `string` en vez de `Blob`; `.blob()` funciona igual
+  sobre un `Response` con body de texto.
+- `vi.stubGlobal('URL', { ...URL, createObjectURL: ... })` rompe:
+  esparcir la clase `URL` en un objeto plano le hace perder su
+  identidad de constructor, y cualquier `new URL(...)` interno deja
+  de funcionar. Se asignan `URL.createObjectURL`/`URL.revokeObjectURL`
+  directamente como propiedades, sin reemplazar el global.
+- `vi.useFakeTimers()` combinado con `waitFor()` de Testing Library
+  hace deadlock (timeout de 5000ms en cada assertion): `waitFor` usa
+  `setTimeout` real internamente para su polling, y los fake timers
+  lo congelan. Los tests dependientes de fecha (`JobsCalendarView`)
+  evitan controlar el reloj del todo — en su lugar, el archivo de
+  test espeja las mismas funciones de date-math del componente
+  (`mondayOf`, `addDays`) para calcular los valores esperados contra
+  la fecha real, sin necesitar `Date` mockeado.
+- El modal de este proyecto (`components/ui/Modal.tsx`) usa
+  `<dialog>` siempre montado en el DOM — abrir/cerrar solo togglea el
+  atributo `open` nativo, nunca desmonta el JSX. Esto significa que
+  el texto dentro de un formulario de modal (opciones de `<select>`,
+  labels de checkbox, párrafos estáticos) siempre está presente en
+  `document.body`, incluso con el modal cerrado, y puede colisionar
+  con texto idéntico en otra parte de la página. Resuelto acotando
+  las queries con `within(screen.getByRole('table'))` (o `within` del
+  `<main>`/diálogo específico), o con `getAllByText(...)` + longitud
+  esperada cuando ambas coincidencias son legítimas (ej. un header de
+  columna y un badge de estado comparten la palabra "Scheduled").
+
+#### Verificación de este addendum
+
+- `pnpm --filter web run test:coverage`: 27 archivos / 139 tests
+  verdes, umbrales cumplidos con margen real.
+- Falsabilidad del gate confirmada (ver arriba): sube a 99% y falla
+  en las cuatro métricas con el mensaje esperado; baja a los valores
+  reales y pasa.
+- `pnpm turbo run lint build test --force`: `apps/web` (lint, build,
+  test) y `apps/mobile` verdes. `apps/api` falla en este entorno
+  porque no hay Postgres corriendo en este sandbox concreto — una
+  limitación del entorno de esta sesión, no una regresión de este
+  cambio (los tests de `apps/api` no fueron tocados en este
+  addendum).
+- El `tsc -b` de `pnpm --filter web run build` encontró y forzó a
+  corregir tres errores de tipos reales en los tests nuevos que
+  `vitest run` (transformación vía esbuild, más permisiva) no había
+  señalado: uso de `Buffer` (API de Node, no disponible en el target
+  de browser de este proyecto — reemplazado por `btoa`), una
+  reasignación directa de `window.location` que el tipo `string &
+Location` de `lib.dom.d.ts` no permite (reemplazada por
+  `Object.defineProperty`), y un fixture de `JobServiceLine` con un
+  campo inventado (`unitPriceSnapshot`, que no existe en
+  `types/api.ts`) y `quantity` tipado como `number` en vez de
+  `string`. Ninguno de los tres era un bug de la aplicación —los tres
+  eran errores en el propio código de test— pero confirma que
+  `pnpm turbo run ... build ...` es una verificación necesaria además
+  de `vitest run`, no redundante con ella.
+
+### CI real de GitHub Actions: dos bugs que el sandbox local nunca podía haber mostrado
+
+El PR de esta rama corrió por primera vez en un runner real de GitHub
+Actions (hasta ahora, toda la verificación de este proyecto había
+sido `pnpm turbo run ... --force` local). Dos fallos aparecieron, en
+secuencia, que ninguna corrida local — en este sandbox ni en ningún
+entorno de desarrollo ya configurado — podía haber detectado:
+
+- **`pnpm/action-setup@v4` rechazó arrancar**: `"Multiple versions of
+pnpm specified"` — el workflow fijaba `version: 10` a la vez que
+  `package.json` ya fija `pnpm@10.33.0` vía `packageManager`, y la
+  acción se niega a correr si ambos están presentes (ambigüedad
+  deliberada de su parte). Arreglado quitando el `version:` redundante
+  del workflow — la acción ya lee la versión exacta desde
+  `packageManager`.
+- **`sh: 1: eslint: not found`** en el step de lint, apenas se resolvió
+  lo anterior: ningún paquete del monorepo declaraba `eslint` como
+  dependencia propia — solo `packages/config` lo tenía, y bajo pnpm
+  estricto eso no se propaga a quien lo consume. Esto estuvo
+  invisible en **todas** las corridas de este proyecto hasta ahora
+  porque el entorno de desarrollo usado en esta sesión tiene un
+  `eslint` global instalado por coincidencia (`/opt/node22/bin/eslint`),
+  ajeno por completo a este repo; los runners limpios de GitHub
+  Actions no tienen ese atajo. Arreglado agregando `eslint` como
+  devDependency de la raíz (mismo patrón que `typescript`/`prettier`,
+  ya declarados ahí y no en cada app). Verificado ocultando
+  temporalmente el `eslint` global de este sandbox y confirmando que
+  `pnpm turbo run lint --force` seguía resolviendo y pasando en las
+  tres apps sin él.
+
+### Bug real de Windows, encontrado guiando el setup local en una máquina real
+
+Verificar "¿corre en una máquina limpia?" en CI no fue suficiente —
+CI corre en Linux. Guiar la instalación completa en una máquina
+Windows real (clonar, instalar, `prisma migrate deploy`) expuso un
+tercer bug, distinto a los dos de arriba:
+
+- **Un checkout en Windows con `core.autocrlf=true` (el default común
+  del instalador de Git for Windows) convierte cada salto de línea
+  LF a CRLF**, incluyendo `apps/api/.env.example`. Copiado tal cual a
+  `.env`, el `\r` de más quedaba pegado al final de cada valor —
+  `MIGRATION_DATABASE_URL=...&schema=public\r` — y rompía el parseo
+  de la URL de conexión en Prisma, con un mensaje de error genérico y
+  engañoso (`"authentication failed for `(not available)`"`) que no
+  tenía nada que ver con la causa real. Diagnosticado leyendo el
+  archivo con Node (`fs.readFileSync(...).split('\n')`, mostrando el
+  `\r` explícito vía `JSON.stringify`) en vez de confiar en lo que
+  `type`/`cat` muestran en una consola de Windows, que ocultan el
+  carácter. Arreglado con un `.gitattributes` (`* text=auto eol=lf`)
+  en la raíz — fuerza LF en el checkout sin importar la config local
+  del contribuidor, en vez de pedirle a cada persona con Windows que
+  se acuerde de convertir el archivo a mano.
+- (No es un bug de este repo, pero vale dejarlo anotado: en la misma
+  sesión de troubleshooting apareció un cuarto problema — un
+  PostgreSQL nativo de Windows, instalado para otro proyecto,
+  compitiendo por el puerto 5432 con el Postgres de Docker de este
+  proyecto. Windows enruta las conexiones nuevas al servicio nativo,
+  no al contenedor, así que `docker exec` (que entra directo al
+  contenedor) funcionaba pero la conexión real desde Prisma fallaba
+  siempre. Resuelto deteniendo el servicio nativo — específico de esa
+  máquina, no algo para codificar en este repo.)
+
+### Dos bugs de producto, encontrados usando la app de verdad por primera vez
+
+Con la app corriendo end-to-end (API + Postgres + web) por primera
+vez en este proyecto — hasta ahora, "verificado" había significado
+`curl`/tests automatizados, nunca clickear la UI real como lo haría
+un usuario — aparecieron dos bugs de producto genuinos en minutos:
+
+- **Un job se podía guardar con `scheduledEnd` anterior a
+  `scheduledStart`.** Ni `CreateJobDto`/`UpdateJobDto` ni
+  `JobsService` validaban el orden de las fechas. Arreglado con
+  `JobsService.assertValidScheduleWindow` (mismo patrón que las
+  demás validaciones cruzadas del servicio — `BadRequestException`
+  explícito, no un decorador de `class-validator`, porque la regla
+  necesita comparar contra el estado existente del job en un
+  `PATCH` parcial, no solo contra el propio payload). Cubre tanto
+  `POST /jobs` como `PATCH /jobs/:id` — en el update, si solo uno de
+  los dos campos viene en el payload, se compara contra el valor ya
+  guardado del otro.
+- **La moneda de las facturas estaba fija en `"USD"`, sin forma de
+  cambiarla** — ni al crear la organización ni al crear una factura;
+  era el default de la columna en Prisma, nunca seteado
+  explícitamente en ningún lado. Encontrado por un usuario real en
+  Australia viendo sus facturas en USD. Arreglado agregando
+  `Organization.defaultCurrency` (migración
+  `20260805065546_organization_default_currency`, default `"USD"`
+  para no romper organizaciones existentes), seteable vía el
+  `PATCH /organizations/me` que ya existía (mismo mecanismo que
+  `timezone`/`locale`, validado como código ISO 4217 de 3 letras con
+  `@Matches`), y `InvoicesService.createWithGeneratedNumber` ahora lee
+  `organization.defaultCurrency` en vez de dejar que el default de
+  columna decida. El signup sigue sembrando `"USD"` igual que ya
+  sembraba `'UTC'`/`'en-US'` para timezone/locale — se cambia después
+  vía el mismo endpoint, no se agregó un campo nuevo al signup.
+  `apps/web` no tiene todavía una página de "organization settings"
+  (no existía antes de este cambio), así que por ahora se setea vía
+  API directamente; construir esa página queda fuera de este
+  addendum salvo que se pida explícitamente.
+
+#### Verificación de estos cinco hallazgos
+
+- CI de GitHub Actions en el PR: los 19 steps de la corrida
+  `618ef2f` pasaron — lint, build, test, los dos gates de cobertura,
+  build de la imagen Docker, check de READMEs.
+- El bug de CRLF se reprodujo en vivo en una máquina Windows real
+  (no simulado) y se confirmó arreglado releyendo el `.env`
+  regenerado con el mismo método de diagnóstico.
+- El conflicto de puerto de Postgres se diagnosticó con
+  `netstat -ano`/`tasklist` en la misma máquina, identificando el PID
+  del proceso nativo (`postgres.exe`, servicio `PostgreSQL-x64-18`)
+  contra el de Docker (`com.docker.backend.exe`).
+- Los dos bugs de producto tienen tests e2e nuevos en
+  `business-flows.e2e.spec.ts` (`rejects a job whose scheduledEnd is
+not after scheduledStart`, `defaults new invoices to the
+organization's configured currency`), corridos 3 veces seguidas sin
+  flakiness: 67/67 verdes (65 + 2 nuevos).
+- `pnpm --filter api run test:coverage`: gate de cobertura sigue
+  cumpliendo con margen (82.5% statements ≥ 78% requerido) después de
+  agregar el código nuevo.
+- `pnpm turbo run lint build test --force --filter=@dos/api`: 3/3
+  verde.
+- `docs/api/openapi.yaml` regenerado (`pnpm run docs:api`) para
+  reflejar el nuevo campo `defaultCurrency` en `UpdateOrganizationDto`.
+
+**Fase 9 (incluyendo todos sus addenda) completa.** Como en el cierre
+de Fase 8: no hay una fase siguiente definida en ningún documento del
+proyecto. De la lista de brechas deliberadas, quedan: cámara en
+mobile (bloqueada, sin dispositivo/emulador en este entorno), la
+actualización mayor de `fast-xml-parser` dentro del toolchain de
+Android de RN (única vulnerabilidad de dependencias restante en todo
+el monorepo), y la race angosta de recargas `goto()` en rápida
+sucesión (fuera de alcance porque requiere tocar la detección de
+reuso de tokens del servidor). La cobertura de tests de la capa de
+páginas de `apps/web`, que era el último punto de esta lista, quedó
+cerrada en un addendum anterior. Cualquier dirección posterior
+necesita alcance definido por el stakeholder.

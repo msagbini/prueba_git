@@ -1,0 +1,874 @@
+// DOS database schema. Single source of truth for every table — reviewed
+// against docs/architecture/multi-tenancy.md and the ERD in docs/erd/.
+// Row-Level Security policies are not expressible here; they are
+// hand-authored SQL appended to the relevant migration (see ADR 0002).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // The API runtime connects as the restricted `dos_app` role (no
+  // BYPASSRLS). Migrations run separately against `directUrl`, connected
+  // as the privileged `dos_migrator` role (BYPASSRLS) — see
+  // docs/architecture/multi-tenancy.md.
+  url       = env("DATABASE_URL")
+  directUrl = env("MIGRATION_DATABASE_URL")
+}
+
+// Models are added table-by-table in the migrations that follow this one,
+// grouped as: identity & tenancy, then business entities (see
+// docs/technical-log/phase-2.md for the exact sequence).
+//
+// Convention: every tenant-scoped table carries its own `organizationId`
+// column directly (even where it's reachable through a parent FK), so
+// every Row-Level Security policy is a single-column equality check — see
+// docs/architecture/multi-tenancy.md. `User`, `Role`, `Permission`,
+// `RolePermission`, `IndustryVertical`, `PasswordResetToken` and
+// `EmailVerificationToken` are the intentional exceptions: they are global
+// identity/reference tables, not tenant business data.
+
+// ---------------------------------------------------------------------------
+// Identity & tenancy
+// ---------------------------------------------------------------------------
+
+enum IndustryVerticalCode {
+  CLEANING
+  CONSTRUCTION_CLEANING
+  MAINTENANCE
+  LANDSCAPING
+  GENERAL_FIELD_SERVICE
+
+  @@map("industry_vertical_code")
+}
+
+/// Reference data: the verticals DOS is configured for. Organizations link
+/// to one; industry-specific behavior is driven by configuration (see
+/// Organization.settings), not by branching code per vertical.
+model IndustryVertical {
+  id          String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        IndustryVerticalCode @unique
+  name        String
+  description String?
+
+  organizations Organization[]
+
+  @@map("industry_verticals")
+}
+
+enum OrganizationStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+
+  @@map("organization_status")
+}
+
+/// A tenant. Every business-data table ultimately scopes to one of these,
+/// either directly (organizationId column) or, for Organization itself, by
+/// its own id — see the RLS policy on this table in the accompanying
+/// migration.
+model Organization {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String
+  slug               String             @unique
+  industryVerticalId String             @map("industry_vertical_id") @db.Uuid
+  timezone           String
+  locale             String
+  /// ISO 4217 currency code new invoices default to (see
+  /// InvoicesService.createWithGeneratedNumber) — settable via
+  /// PATCH /organizations/me, same as timezone/locale. Signup still seeds
+  /// "USD" like it does 'UTC'/'en-US' for timezone/locale; there's no
+  /// locale-to-currency inference table in this codebase, so guessing one
+  /// from `locale` would be a fabricated mapping, not a real default.
+  defaultCurrency    String             @default("USD") @map("default_currency")
+  status             OrganizationStatus @default(TRIAL)
+  /// Vertical-specific configuration (e.g. default job duration, terminology
+  /// overrides). Deliberately opaque/JSON rather than typed columns per
+  /// vertical — see docs/adr for the extensibility rationale.
+  settings           Json?
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  industryVertical  IndustryVertical         @relation(fields: [industryVerticalId], references: [id])
+  memberships       OrganizationMembership[]
+  invitations       UserInvitation[]
+  refreshTokens     RefreshToken[]
+  clients           Client[]
+  serviceCategories ServiceCategory[]
+  services          Service[]
+  jobs              Job[]
+  staffProfiles     StaffProfile[]
+  invoices          Invoice[]
+  payments          Payment[]
+  auditLogs         AuditLog[]
+  clientAddresses   ClientAddress[]
+  jobServices       JobService[]
+  jobAssignments    JobAssignment[]
+  jobAttachments    JobAttachment[]
+  invoiceLineItems  InvoiceLineItem[]
+  subscription      Subscription?
+  notifications     Notification[]
+
+  @@map("organizations")
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+
+  @@map("user_status")
+}
+
+/// A global identity. Deliberately has no organizationId — a user can hold
+/// memberships in several organizations (ADR 0005). Access to another
+/// user's record is restricted at the API layer to users who share an
+/// OrganizationMembership, not by RLS on this table.
+model User {
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email           String     @unique
+  passwordHash    String     @map("password_hash")
+  firstName       String     @map("first_name")
+  lastName        String     @map("last_name")
+  phone           String?
+  status          UserStatus @default(ACTIVE)
+  emailVerifiedAt DateTime?  @map("email_verified_at")
+  lastLoginAt     DateTime?  @map("last_login_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+  deletedAt       DateTime?  @map("deleted_at")
+
+  memberships             OrganizationMembership[]
+  refreshTokens           RefreshToken[]
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  sentInvitations         UserInvitation[]         @relation("InvitedBy")
+  createdJobs             Job[]                    @relation("JobCreatedBy")
+  uploadedJobAttachments  JobAttachment[]          @relation("JobAttachmentUploadedBy")
+  auditLogActions         AuditLog[]
+  notifications           Notification[]
+
+  @@map("users")
+}
+
+enum RoleCode {
+  OWNER
+  ADMIN
+  DISPATCHER
+  STAFF
+  CLIENT
+
+  @@map("role_code")
+}
+
+/// Fixed system roles for Fase 2 — see docs/architecture/auth.md. Per-org
+/// custom roles are a documented future extension (isSystemRole exists to
+/// distinguish the two once that lands; every row is a system role today).
+model Role {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code         RoleCode @unique
+  name         String
+  description  String?
+  isSystemRole Boolean  @default(true) @map("is_system_role")
+
+  memberships     OrganizationMembership[]
+  rolePermissions RolePermission[]
+  invitations     UserInvitation[]
+
+  @@map("roles")
+}
+
+/// A single grantable capability (e.g. "jobs.assign"). See the RBAC matrix
+/// in docs/architecture/auth.md for how these compose per role.
+model Permission {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String  @unique
+  module      String
+  description String?
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+/// Join table: which permissions a role grants.
+model RolePermission {
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+
+  @@map("membership_status")
+}
+
+/// The join between a global User and an Organization: what role they hold
+/// there, and (for the Client role) which Client record they are. A JWT
+/// access token is scoped to exactly one membership at a time — see
+/// docs/architecture/auth.md.
+model OrganizationMembership {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  roleId         String           @map("role_id") @db.Uuid
+  /// Only set when roleId is the Client role — links this membership to the
+  /// specific Client record this person is.
+  clientId       String?          @map("client_id") @db.Uuid
+  status         MembershipStatus @default(ACTIVE)
+  joinedAt       DateTime         @default(now()) @map("joined_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+  role         Role         @relation(fields: [roleId], references: [id])
+  client       Client?      @relation(fields: [clientId], references: [id])
+
+  refreshTokens  RefreshToken[]
+  staffProfile   StaffProfile?
+  jobAssignments JobAssignment[]
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@map("organization_memberships")
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+
+  @@map("invitation_status")
+}
+
+/// A pending invite to join an Organization with a given Role. See the
+/// accept-flow branching (new email vs. existing account) in
+/// docs/architecture/auth.md.
+model UserInvitation {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String           @map("organization_id") @db.Uuid
+  email           String
+  roleId          String           @map("role_id") @db.Uuid
+  invitedByUserId String           @map("invited_by_user_id") @db.Uuid
+  tokenHash       String           @unique @map("token_hash")
+  status          InvitationStatus @default(PENDING)
+  expiresAt       DateTime         @map("expires_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  /// Only set when roleId is the Client role — carried through to the
+  /// OrganizationMembership created on acceptance, same meaning as
+  /// OrganizationMembership.clientId.
+  clientId        String?          @map("client_id") @db.Uuid
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  role         Role         @relation(fields: [roleId], references: [id])
+  invitedBy    User         @relation("InvitedBy", fields: [invitedByUserId], references: [id])
+  client       Client?      @relation(fields: [clientId], references: [id])
+
+  @@index([organizationId])
+  @@map("user_invitations")
+}
+
+/// A rotating refresh token, scoped to one OrganizationMembership (one
+/// active org at a time) per ADR 0004/0005. `replacedByTokenId` chains
+/// rotations so reuse of a revoked token can be detected and the whole
+/// family revoked.
+model RefreshToken {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  membershipId      String    @map("membership_id") @db.Uuid
+  tokenHash         String    @unique @map("token_hash")
+  expiresAt         DateTime  @map("expires_at")
+  revokedAt         DateTime? @map("revoked_at")
+  replacedByTokenId String?   @unique @map("replaced_by_token_id") @db.Uuid
+  userAgent         String?   @map("user_agent")
+  ipAddress         String?   @map("ip_address")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  organization    Organization           @relation(fields: [organizationId], references: [id])
+  user            User                   @relation(fields: [userId], references: [id])
+  membership      OrganizationMembership @relation(fields: [membershipId], references: [id])
+  replacedByToken RefreshToken?          @relation("TokenChain", fields: [replacedByTokenId], references: [id])
+  replacesToken   RefreshToken?          @relation("TokenChain")
+
+  @@index([organizationId])
+  @@map("refresh_tokens")
+}
+
+/// Password-reset tokens. Tied to the global User (a person has one
+/// password across every organization they belong to), so — like User
+/// itself — this table is intentionally not tenant-scoped.
+model PasswordResetToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("password_reset_tokens")
+}
+
+/// Email-verification tokens, sent on signup. Same not-tenant-scoped
+/// reasoning as PasswordResetToken — verifying an email verifies the
+/// global User, not a membership.
+model EmailVerificationToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("email_verification_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Business entities
+// ---------------------------------------------------------------------------
+
+enum ClientType {
+  RESIDENTIAL
+  COMMERCIAL
+
+  @@map("client_type")
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+
+  @@map("client_status")
+}
+
+/// A customer of an organization. Distinct from a portal-login user — a
+/// Client only gets a `User`/`OrganizationMembership` if they're granted
+/// portal access (role Client); most clients never log in at all.
+model Client {
+  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String       @map("organization_id") @db.Uuid
+  name               String
+  type               ClientType
+  primaryContactName String?      @map("primary_contact_name")
+  email              String?
+  phone              String?
+  status             ClientStatus @default(ACTIVE)
+  notes              String?
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+  deletedAt          DateTime?    @map("deleted_at")
+
+  organization Organization             @relation(fields: [organizationId], references: [id])
+  addresses    ClientAddress[]
+  memberships  OrganizationMembership[]
+  jobs         Job[]
+  invoices     Invoice[]
+  invitations  UserInvitation[]
+
+  @@index([organizationId])
+  // ClientsService.list() (GET /clients) always orders by name within the organization.
+  @@index([organizationId, name])
+  @@map("clients")
+}
+
+enum AddressLabel {
+  BILLING
+  SERVICE
+
+  @@map("address_label")
+}
+
+/// A physical address for a Client. Kept separate from Client because the
+/// service address a Job happens at commonly differs from the billing
+/// address, and a Client can have several of each.
+model ClientAddress {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  clientId       String       @map("client_id") @db.Uuid
+  label          AddressLabel
+  addressLine1   String       @map("address_line1")
+  addressLine2   String?      @map("address_line2")
+  city           String
+  state          String
+  postalCode     String       @map("postal_code")
+  country        String
+  lat            Float?
+  lng            Float?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  organization         Organization @relation(fields: [organizationId], references: [id])
+  client               Client       @relation(fields: [clientId], references: [id])
+  jobsAsServiceAddress Job[]        @relation("JobServiceAddress")
+
+  @@index([organizationId])
+  // ClientsService.listAddresses (GET /clients/:id/addresses) filters by clientId directly.
+  @@index([clientId])
+  @@map("client_addresses")
+}
+
+/// Groups Services for catalog display (e.g. "Recurring", "One-time deep
+/// clean"). Optional — a Service does not require a category.
+model ServiceCategory {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  name           String
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  services     Service[]
+
+  @@index([organizationId])
+  @@map("service_categories")
+}
+
+enum PricingType {
+  HOURLY
+  FIXED
+  PER_UNIT
+
+  @@map("pricing_type")
+}
+
+/// A sellable service in an organization's catalog, priced by the hour, a
+/// fixed amount, or per unit (unitLabel, e.g. "sq ft", "window").
+model Service {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  categoryId     String?     @map("category_id") @db.Uuid
+  name           String
+  description    String?
+  pricingType    PricingType @map("pricing_type")
+  unitLabel      String?     @map("unit_label")
+  basePrice      Decimal     @map("base_price") @db.Decimal(10, 2)
+  isActive       Boolean     @default(true) @map("is_active")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  organization     Organization      @relation(fields: [organizationId], references: [id])
+  category         ServiceCategory?  @relation(fields: [categoryId], references: [id])
+  jobServices      JobService[]
+  invoiceLineItems InvoiceLineItem[]
+
+  @@index([organizationId])
+  // ServicesService.list() (GET /services) always orders by name within the organization.
+  @@index([organizationId, name])
+  @@map("services")
+}
+
+enum JobStatus {
+  DRAFT
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+
+  @@map("job_status")
+}
+
+/// A unit of scheduled work at a Client's address. `recurrenceRule` (an
+/// RRULE string) plus `parentJobId` link generated recurring instances back
+/// to the job they were spawned from.
+model Job {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  clientId         String    @map("client_id") @db.Uuid
+  serviceAddressId String?   @map("service_address_id") @db.Uuid
+  status           JobStatus @default(DRAFT)
+  scheduledStart   DateTime? @map("scheduled_start")
+  scheduledEnd     DateTime? @map("scheduled_end")
+  actualStart      DateTime? @map("actual_start")
+  actualEnd        DateTime? @map("actual_end")
+  /// RRULE string (RFC 5545) describing the recurrence pattern, if any.
+  recurrenceRule   String?   @map("recurrence_rule")
+  parentJobId      String?   @map("parent_job_id") @db.Uuid
+  notes            String?
+  createdByUserId  String    @map("created_by_user_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  organization       Organization      @relation(fields: [organizationId], references: [id])
+  client             Client            @relation(fields: [clientId], references: [id])
+  serviceAddress     ClientAddress?    @relation("JobServiceAddress", fields: [serviceAddressId], references: [id])
+  parentJob          Job?              @relation("JobRecurrence", fields: [parentJobId], references: [id])
+  recurringInstances Job[]             @relation("JobRecurrence")
+  createdBy          User              @relation("JobCreatedBy", fields: [createdByUserId], references: [id])
+  jobServices        JobService[]
+  assignments        JobAssignment[]
+  invoiceLineItems   InvoiceLineItem[]
+  attachments        JobAttachment[]
+
+  @@index([organizationId])
+  // `list()` (jobs.service.ts) always orders by scheduledStart within the
+  // caller's organization — this lets Postgres satisfy that with an
+  // index scan instead of a full-table sort once an organization has
+  // more than a handful of jobs.
+  @@index([organizationId, scheduledStart])
+  // The recurring-job materializer's duplicate check (recurring-jobs.service.ts)
+  // filters by parentJobId directly.
+  @@index([parentJobId])
+  @@map("jobs")
+}
+
+/// Join table: which Services (and at what price, snapshotted at booking
+/// time so later catalog price changes don't retroactively change a
+/// scheduled job) make up a Job.
+model JobService {
+  id                String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String  @map("organization_id") @db.Uuid
+  jobId             String  @map("job_id") @db.Uuid
+  serviceId         String  @map("service_id") @db.Uuid
+  quantity          Decimal @db.Decimal(10, 2)
+  unitPriceSnapshot Decimal @map("unit_price_snapshot") @db.Decimal(10, 2)
+  notes             String?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  job          Job          @relation(fields: [jobId], references: [id])
+  service      Service      @relation(fields: [serviceId], references: [id])
+
+  @@index([organizationId])
+  @@index([jobId])
+  @@map("job_services")
+}
+
+/// A photo (or other file) attached as evidence of work done on a Job —
+/// e.g. before/after cleaning photos. `storagePath` is a path relative to
+/// the configured uploads directory, not a public URL: files are served
+/// through an authenticated, tenant-scoped download route
+/// (GET /jobs/:id/attachments/:attachmentId), not static file serving,
+/// since a guessable public path would leak one organization's job
+/// photos to anyone with the URL.
+model JobAttachment {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  jobId           String   @map("job_id") @db.Uuid
+  uploadedByUserId String  @map("uploaded_by_user_id") @db.Uuid
+  fileName        String   @map("file_name")
+  mimeType        String   @map("mime_type")
+  sizeBytes       Int      @map("size_bytes")
+  storagePath     String   @map("storage_path")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  job          Job          @relation(fields: [jobId], references: [id])
+  uploadedBy   User         @relation("JobAttachmentUploadedBy", fields: [uploadedByUserId], references: [id])
+
+  @@index([organizationId])
+  @@index([jobId])
+  @@map("job_attachments")
+}
+
+enum AssignmentStatus {
+  ASSIGNED
+  CONFIRMED
+  DECLINED
+
+  @@map("assignment_status")
+}
+
+/// Which staff (OrganizationMembership) is assigned to a Job, and whether
+/// they've confirmed.
+model JobAssignment {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  jobId          String           @map("job_id") @db.Uuid
+  membershipId   String           @map("membership_id") @db.Uuid
+  status         AssignmentStatus @default(ASSIGNED)
+  assignedAt     DateTime         @default(now()) @map("assigned_at")
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  job          Job                    @relation(fields: [jobId], references: [id])
+  membership   OrganizationMembership @relation(fields: [membershipId], references: [id])
+
+  @@index([organizationId])
+  @@index([jobId])
+  @@map("job_assignments")
+}
+
+enum StaffStatus {
+  ACTIVE
+  INACTIVE
+
+  @@map("staff_status")
+}
+
+/// Employment-specific fields for a staff member, 1:1 with the
+/// OrganizationMembership that represents their employment at this
+/// organization — kept off User/OrganizationMembership because these
+/// fields are operational/HR data, not identity or access-control data.
+model StaffProfile {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  membershipId   String      @unique @map("membership_id") @db.Uuid
+  employeeCode   String?     @map("employee_code")
+  hourlyRate     Decimal?    @map("hourly_rate") @db.Decimal(10, 2)
+  hireDate       DateTime?   @map("hire_date") @db.Date
+  status         StaffStatus @default(ACTIVE)
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  membership   OrganizationMembership @relation(fields: [membershipId], references: [id])
+
+  @@index([organizationId])
+  // StaffService.list() (GET /staff) always orders by createdAt within the organization.
+  @@index([organizationId, createdAt])
+  @@map("staff_profiles")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  VOID
+
+  @@map("invoice_status")
+}
+
+/// A bill sent to a Client, itemized via InvoiceLineItem and settled via
+/// one or more Payments.
+model Invoice {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  clientId       String        @map("client_id") @db.Uuid
+  invoiceNumber  String        @map("invoice_number")
+  status         InvoiceStatus @default(DRAFT)
+  issueDate      DateTime      @map("issue_date") @db.Date
+  dueDate        DateTime      @map("due_date") @db.Date
+  subtotal       Decimal       @db.Decimal(10, 2)
+  taxAmount      Decimal       @map("tax_amount") @db.Decimal(10, 2)
+  total          Decimal       @db.Decimal(10, 2)
+  currency       String        @default("USD")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  client       Client            @relation(fields: [clientId], references: [id])
+  lineItems    InvoiceLineItem[]
+  payments     Payment[]
+
+  @@unique([organizationId, invoiceNumber])
+  @@index([organizationId])
+  // InvoicesService.list() (GET /invoices) always orders by issueDate within the organization.
+  @@index([organizationId, issueDate])
+  // ClientsService/reports queries an invoice's client directly.
+  @@index([clientId])
+  @@map("invoices")
+}
+
+/// A single billed line on an Invoice, optionally traceable back to the Job
+/// and/or Service it came from (nullable — an invoice can carry an
+/// ad-hoc/manual line item with no Job or Service behind it).
+model InvoiceLineItem {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  invoiceId      String  @map("invoice_id") @db.Uuid
+  jobId          String? @map("job_id") @db.Uuid
+  serviceId      String? @map("service_id") @db.Uuid
+  description    String
+  quantity       Decimal @db.Decimal(10, 2)
+  unitPrice      Decimal @map("unit_price") @db.Decimal(10, 2)
+  lineTotal      Decimal @map("line_total") @db.Decimal(10, 2)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id])
+  job          Job?         @relation(fields: [jobId], references: [id])
+  service      Service?     @relation(fields: [serviceId], references: [id])
+
+  @@index([organizationId])
+  @@index([invoiceId])
+  @@map("invoice_line_items")
+}
+
+enum PaymentMethod {
+  CASH
+  CHECK
+  CARD
+  BANK_TRANSFER
+  OTHER
+
+  @@map("payment_method")
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+
+  @@map("payment_status")
+}
+
+/// A record of money received against an Invoice. Record-keeping only in
+/// Fase 2 — no payment-gateway integration fields (Stripe is Fase 4).
+model Payment {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String        @map("organization_id") @db.Uuid
+  invoiceId       String        @map("invoice_id") @db.Uuid
+  amount          Decimal       @db.Decimal(10, 2)
+  method          PaymentMethod
+  status          PaymentStatus @default(PENDING)
+  paidAt          DateTime?     @map("paid_at")
+  referenceNumber String?       @map("reference_number")
+  notes           String?
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id])
+
+  @@index([organizationId])
+  @@index([invoiceId])
+  @@map("payments")
+}
+
+/// Append-only audit trail. `organizationId` is nullable for system-level
+/// events with no single owning tenant; because the RLS policy below
+/// compares organizationId to the caller's active org, null-org rows are
+/// only reachable via the privileged `dos_migrator` connection, never
+/// through the tenant-scoped API path — by design, not oversight.
+model AuditLog {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String?  @map("organization_id") @db.Uuid
+  actorUserId    String?  @map("actor_user_id") @db.Uuid
+  action         String
+  entityType     String   @map("entity_type")
+  entityId       String   @map("entity_id") @db.Uuid
+  beforeState    Json?    @map("before_state")
+  afterState     Json?    @map("after_state")
+  ipAddress      String?  @map("ip_address")
+  userAgent      String?  @map("user_agent")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  actor        User?         @relation(fields: [actorUserId], references: [id])
+
+  @@index([organizationId])
+  @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Monetización — DOS's own billing to organizations (Fase 4). Distinct from
+// Invoice/Payment above, which are the cleaning business's billing to its
+// own customers.
+// ---------------------------------------------------------------------------
+
+enum PlanCode {
+  FREE
+  PRO
+  BUSINESS
+
+  @@map("plan_code")
+}
+
+/// A subscribable tier DOS sells to organizations. Global reference data
+/// (no organizationId), like IndustryVertical — every organization picks
+/// one, not owns one. `maxClients`/`maxActiveJobs`/`maxStaff` are `null`
+/// for "unlimited" (the Business tier); a concrete number is a hard cap
+/// enforced at creation time in the relevant module (see
+/// docs/technical-log/phase-4.md for which checks exist).
+model Plan {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code              PlanCode @unique
+  name              String
+  description       String?
+  priceMonthlyCents Int      @map("price_monthly_cents")
+  maxClients        Int?     @map("max_clients")
+  maxActiveJobs     Int?     @map("max_active_jobs")
+  maxStaff          Int?     @map("max_staff")
+  /// Stripe Price id for this plan's monthly subscription. Null until a
+  /// real Stripe account/catalog exists to fill it — see
+  /// docs/technical-log/phase-4.md for what checkout does when it's unset.
+  stripePriceId     String?  @map("stripe_price_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+
+  @@map("subscription_status")
+}
+
+/// DOS's own billing relationship with an Organization — exactly one per
+/// org, created on signup at the Free plan. `stripeCustomerId`/
+/// `stripeSubscriptionId` are set once the org completes Stripe Checkout;
+/// both stay null for an organization that never upgraded.
+model Subscription {
+  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String             @unique @map("organization_id") @db.Uuid
+  planId               String             @map("plan_id") @db.Uuid
+  status               SubscriptionStatus @default(ACTIVE)
+  stripeCustomerId     String?            @unique @map("stripe_customer_id")
+  stripeSubscriptionId String?            @unique @map("stripe_subscription_id")
+  currentPeriodEnd     DateTime?          @map("current_period_end")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  plan         Plan         @relation(fields: [planId], references: [id])
+
+  @@index([organizationId])
+  @@map("subscriptions")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications (Fase 9.1) — surfaces events that already happen (a staff
+// assignment, a job coming up soon) as in-app notifications, rather than
+// introducing a new business process. No email/push delivery here; auth's
+// transactional emails (Fase 9) already cover that channel for the events
+// that need it.
+
+enum NotificationType {
+  JOB_ASSIGNED
+  JOB_REMINDER
+
+  @@map("notification_type")
+}
+
+/// One in-app notification for one recipient. `entityType`/`entityId`
+/// point at what it's about (e.g. `"Job"`/a job id) — kept as a loose
+/// pair rather than a proper relation since a notification can end up
+/// pointing at different entity types as `NotificationType` grows, and
+/// nothing here needs to join against it beyond display.
+model Notification {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  userId         String            @map("user_id") @db.Uuid
+  type           NotificationType
+  title          String
+  body           String
+  entityType     String?           @map("entity_type")
+  entityId       String?           @map("entity_id") @db.Uuid
+  readAt         DateTime?         @map("read_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@index([organizationId])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}

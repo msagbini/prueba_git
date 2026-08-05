@@ -1,0 +1,22 @@
+// Extends @react-native/typescript-config, not @dos/config/typescript/react.json
+// (used by apps/web): Metro's JSX/module resolution and target settings are
+// tied to the Hermes engine and differ from a browser bundler's needs, and
+// this is the config the React Native ecosystem itself maintains against
+// each RN release — deliberately not unified with the other apps.
+{
+  "extends": "@react-native/typescript-config",
+  "compilerOptions": {
+    "types": ["jest"],
+    // Override the base config's "jsx": "react-native" (classic transform,
+    // relies on @types/react's now-removed global JSX namespace). RN's own
+    // Babel preset (@react-native/babel-preset) already emits the automatic
+    // runtime; "react-jsx" here just makes tsc's type-checking agree with
+    // what's actually compiled, matching @types/react 19's module-scoped
+    // JSX namespace. Without this, every RN core component and any
+    // Context.Provider fails with TS2786 ("cannot be used as a JSX
+    // component") because the classic mode can't see React 19's JSX types.
+    "jsx": "react-jsx"
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["**/node_modules", "**/Pods"]
+}
