@@ -27,6 +27,9 @@ importers:
       '@dos/config':
         specifier: workspace:*
         version: link:packages/config
+      eslint:
+        specifier: ^9.0.0
+        version: 9.39.5(jiti@2.6.1)
       globals:
         specifier: ^15.11.0
         version: 15.15.0
