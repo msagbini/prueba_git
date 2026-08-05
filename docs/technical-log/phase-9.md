@@ -1217,13 +1217,79 @@ correr ese servidor en un puerto distinto al configurado en
 - Verificación en vivo con Playwright: página de login limpia con y
   sin `VITE_SENTRY_DSN` configurado.
 
+### Cobertura de tests: medición real + regression guard en `apps/api`
+
+`@vitest/coverage-v8` estaba instalado en `apps/web` desde hace
+varias fases sin estar conectado a nada — una dependencia muerta, sin
+`coverage` en el `test` block de `vite.config.ts` ni script para
+correrla. `apps/api` no tenía configuración de cobertura de Jest en
+absoluto. Ninguno de los dos daba visibilidad real de qué fracción
+del código está probada.
+
+Antes de decidir cualquier threshold se midió la cobertura real de
+cada app (no se inventó un número):
+
+- **`apps/api`: 82.18% statements / 80.87% lines / 68.48% functions /
+  49.21% branches** — un número real y sólido, esperable de una suite
+  con 65 tests que incluye e2e/integración contra Postgres real, no
+  solo unitarios. `jest.config.js` ahora tiene `collectCoverageFrom`
+  - `coverageThreshold` fijado unos puntos por debajo de ese
+    baseline medido (78/77/65/46) — suficiente margen para no romper
+    con fluctuaciones menores, pero un guardrail real contra
+    regresiones. **Verificado que el gate realmente frena algo, no
+    solo que existe**: se subió el umbral de `statements` a 99%
+    temporalmente, se confirmó que Jest falla con exit code 1 y el
+    mensaje exacto `"global" coverage threshold for statements (99%)
+not met: 82.18%`, y se revirtió — mismo método de falsabilidad que
+    se usó para el test de regresión de StrictMode más arriba en este
+    documento.
+- **`apps/web`: 6.48% statements / 5.52% branches** — la cobertura
+  real es baja porque casi ninguna página tiene test de componente
+  (`ClientsPage`, `JobsPage`, `InvoicesPage`, `ServicesPage`,
+  `StaffPage`, `LoginPage`, `DashboardPage`, `AppLayout`, `Modal`,
+  `Field`, `Pagination`, `NotificationBell`, `JobsCalendarView`, el
+  routing de `App.tsx` — todas en 0%); lo que sí está cubierto es
+  lógica pura (`formatPrice`/`formatLimit` de `BillingPage`,
+  `decodeJwtRole` de `client.ts`) y los pocos componentes con test
+  dedicado (`AuthContext`, `ErrorBoundary`, `sentry.ts`). **Se
+  decidió no ponerle un threshold que bloquee CI**: al 6% sería un
+  guardrail sin sentido (no protege nada real), y subirlo a un
+  número que sí proteja algo requeriría escribir tests de componente
+  para prácticamente toda la capa de páginas — un esfuerzo bastante
+  más grande que "conectar la config de cobertura", y una decisión
+  de alcance que le corresponde al stakeholder, no algo para meter
+  de forma implícita en esta pasada. Se conecta el `coverage`
+  provider (`v8`) igual, para que al menos el número real quede
+  visible en cada corrida en vez de ser una incógnita.
+- CI (`.github/workflows/ci.yml`) corre `pnpm --filter @dos/api run
+test:coverage` (con gate real) y `pnpm --filter @dos/web run
+test:coverage` (solo reporte, sin gate) después de la suite normal,
+  y sube ambos `lcov.info` como artifact — visibles en cada corrida
+  sin tener que reproducir la medición localmente.
+
+#### Verificación de este addendum
+
+- `pnpm --filter api run test:coverage`: 65/65 verde, umbrales
+  cumplidos con margen real (82.18% ≥ 78%, etc.).
+- Falsabilidad del gate confirmada (ver arriba): sube y falla, baja y
+  pasa.
+- `pnpm --filter web run test:coverage`: 24/24 verde, reporte
+  generado sin gate.
+- `pnpm turbo run lint build test --force`: 9/9 verde — la suite
+  normal (`pnpm run test`, sin `--coverage`) no cambió de
+  comportamiento, el gate solo corre en el script dedicado y en CI.
+
 **Fase 9 (incluyendo este addendum) completa.** Como en el cierre de
 Fase 8: no hay una fase siguiente definida en ningún documento del
 proyecto. De la lista de brechas deliberadas, quedan: cámara en
 mobile (bloqueada, sin dispositivo/emulador en este entorno), la
 actualización mayor de `fast-xml-parser` dentro del toolchain de
 Android de RN (única vulnerabilidad de dependencias restante en todo
-el monorepo), y la race angosta de recargas `goto()` en rápida
+el monorepo), la race angosta de recargas `goto()` en rápida
 sucesión (fuera de alcance porque requiere tocar la detección de
-reuso de tokens del servidor). Cualquier dirección posterior necesita
-alcance definido por el stakeholder.
+reuso de tokens del servidor), y la cobertura de tests de la capa de
+páginas de `apps/web` (documentada arriba — un esfuerzo de escritura
+de tests considerablemente más grande que cualquier otro punto de
+esta lista, pendiente de que el stakeholder decida si vale la pena
+antes de emprenderlo). Cualquier dirección posterior necesita alcance
+definido por el stakeholder.

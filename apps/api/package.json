@@ -9,6 +9,7 @@
     "start": "node dist/main.js",
     "lint": "eslint .",
     "test": "jest",
+    "test:coverage": "jest --coverage",
     "docs:api": "nest build && node dist/scripts/generate-openapi.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

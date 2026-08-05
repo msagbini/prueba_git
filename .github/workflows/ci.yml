@@ -72,6 +72,31 @@ jobs:
       - name: Test
         run: pnpm turbo run test
 
+      # apps/api's coverage floor is a real regression guard (set at its
+      # measured baseline — see jest.config.js) and fails the build if
+      # crossed. apps/web's isn't gated the same way: coverage there sits
+      # around 6% (only pure logic and a couple of components are
+      # unit-tested; the page layer has none), so a threshold would be
+      # either meaningless at that floor or would require a much larger
+      # test-writing effort than "wire up coverage" — see
+      # docs/technical-log/phase-9.md. This still runs to publish the
+      # report as a build artifact, just without `--coverage`-driven
+      # failure.
+      - name: API test coverage (enforced)
+        run: pnpm --filter @dos/api run test:coverage
+
+      - name: Web test coverage (reporting only, not yet gated)
+        run: pnpm --filter @dos/web run test:coverage
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            apps/api/coverage/lcov.info
+            apps/web/coverage/lcov.info
+          retention-days: 14
+
       - name: Check required READMEs
         run: pnpm docs:check-readmes
 

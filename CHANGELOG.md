@@ -102,6 +102,28 @@ deliberately unbuilt (`docs/technical-log/phase-9.md` has the full log).
   before first render) and can't benefit from this app's existing
   route-level code-splitting. Verified live with Playwright in both
   configurations (DSN set and unset): clean console in both.
+- **Test coverage measurement, and a real gate for `apps/api`**:
+  `@vitest/coverage-v8` had been an installed-but-unwired dependency
+  in `apps/web` for several phases. Measured both apps' real coverage
+  before setting anything (not invented numbers): `apps/api` —
+  82.18% statements / 80.87% lines / 68.48% functions / 49.21%
+  branches, a solid number from a suite with real e2e/integration
+  coverage against Postgres; `apps/web` — 6.48% statements, because
+  almost no page component has a test (only pure logic and a
+  handful of components do). Wired `jest.config.js`'s
+  `coverageThreshold` a few points below the measured `apps/api`
+  baseline (78/77/65/46) — confirmed with a falsifiability check
+  (temporarily raised the statements threshold to 99%, confirmed
+  Jest fails with the exact expected message, reverted) that it's a
+  real gate, not just present in config. Deliberately did **not**
+  gate `apps/web` on its 6% number — that would be a meaningless
+  guardrail, and raising it to something meaningful means writing
+  component tests for essentially the entire page layer, a
+  materially larger effort than "wire up coverage," left for the
+  stakeholder to scope rather than assumed. New `test:coverage`
+  scripts in both apps; CI now runs `apps/api`'s coverage as a real
+  gate and `apps/web`'s as a reporting-only step, uploading both
+  `lcov.info` files as a build artifact.
 
 ### Changed — Fase 9.1
 
