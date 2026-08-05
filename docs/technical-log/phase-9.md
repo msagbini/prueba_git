@@ -955,6 +955,118 @@ usar RSC, pero igual cerraba el hallazgo del audit).
   (Vite 7, React 19), navegación realista: sin errores de consola
   nuevos, todos los flujos operativos y de auth intactos.
 
+### Observabilidad real: logging estructurado + error tracking
+
+Hasta este punto, si algo fallaba en producción nadie se enteraba —
+`apps/api` no tenía más que el logger de consola por defecto de
+Nest, y ningún unhandled exception se reportaba a ningún lado. Este
+addendum cierra esa brecha, deliberadamente separado de cualquier
+migración de dependencias (es funcionalidad nueva, no un bump).
+
+- **Logging estructurado** (`nestjs-pino`): reemplaza el logger por
+  defecto de Nest en toda la app (`app.useLogger()` en `main.ts`,
+  con `bufferLogs: true` para no perder los logs de arranque
+  mientras se resuelve la instancia real). JSON en producción/test,
+  pretty-printed solo en desarrollo local — y explícitamente nunca
+  bajo Jest (`!process.env.JEST_WORKER_ID`), porque el transporte
+  `pino-pretty` corre en un worker thread que no cierra limpio entre
+  archivos de test. **Redacta credenciales**: `Authorization`,
+  `Cookie`, `Set-Cookie`, y los campos `password`/`newPassword`/
+  `token`/`refreshToken`/`selectionToken` del body — se armó la
+  lista revisando los DTOs reales de `modules/auth/dto/`, no
+  adivinando. `GET /health` queda excluido del access log (es un
+  ping de infraestructura, no una request de negocio) vía
+  `autoLogging.ignore`.
+- **`ErrorReportingService`** (`modules/observability/`): mismo
+  patrón de proveedor-por-factory que `EmailService`
+  (`SmtpEmailService`/`ConsoleEmailService`) — `SentryErrorReportingService`
+  se une cuando `SENTRY_DSN` está configurado, `NoopErrorReportingService`
+  (avisa una sola vez, no revienta) en caso contrario. Mismo estándar
+  de honestidad que Stripe/SMTP: no existe una cuenta real de Sentry
+  en este proyecto, así que `Sentry.init()`/`captureException()` son
+  llamadas reales contra el SDK real, pero la entrega real a un
+  proyecto de Sentry queda sin verificar — solo se verificó que el
+  binding de DI elige el servicio correcto según `SENTRY_DSN`.
+- **`AllExceptionsFilter`** (`common/filters/`, registrado global vía
+  `APP_FILTER`): extiende `BaseExceptionFilter` y delega la
+  respuesta HTTP real a `super.catch()` — este filtro solo añade
+  logging/reporting como efecto secundario, nunca cambia lo que
+  recibe el caller (los tests existentes de validación/errores no se
+  tocaron ni necesitaron tocarse). 5xx se loguea `error` + se
+  reporta a `ErrorReportingService`; 4xx se loguea `warn` y no se
+  reporta (son errores de request normales, no bugs de la
+  aplicación).
+- **Handlers a nivel de proceso** (`main.ts`): `uncaughtException`
+  (loguea, reporta, y `process.exit(1)` — Node sigue corriendo en
+  estado posiblemente corrupto por defecto, dejar que el orquestador
+  reinicie es más seguro) y `unhandledRejection` (loguea y reporta,
+  sin salir — muchos rejections no son fatales). **Hallazgo real
+  mientras se verificaba esto**: registrar un handler de
+  `unhandledRejection` suprime el comportamiento por defecto de
+  Node de terminar el proceso ante un rejection no manejado —
+  reproducido en vivo apagando Postgres antes de levantar la API: el
+  `bootstrap()` fallaba, el nuevo handler lo logueaba correctamente,
+  pero el proceso quedaba zombie (vivo, sin escuchar en ningún
+  puerto) en vez de terminar, que es peor para un orquestador de
+  contenedores (un proceso "vivo" no dispara su política de
+  reinicio). Arreglado con un `.catch()` explícito en la propia
+  llamada a `bootstrap()` que loguea a consola simple (el logger real
+  puede no existir todavía si lo que falló fue `NestFactory.create()`
+  en sí) y hace `process.exit(1)` — un fallo de arranque es un caso
+  distinto de un rejection en estado estable, y debe ser siempre
+  fatal.
+- **`ErrorBoundary`** (`apps/web`): la SPA no tenía ninguno — un
+  error de render en cualquier parte del árbol dejaba una página en
+  blanco sin recuperación ni registro. Se agregó envolviendo toda la
+  app en `main.tsx` (componente de clase — `componentDidCatch`/
+  `getDerivedStateFromError` no tienen equivalente en hooks),
+  logueando a consola y mostrando una pantalla de recuperación con
+  botón de recarga en vez de una página en blanco. **Fuera de
+  alcance, explícitamente**: un SDK de Sentry en el navegador
+  (mirroring del lado del backend) — se dejó de este lado para no
+  inflar esta pasada; queda documentado como brecha conocida, no
+  omitida en silencio.
+
+Verificado en vivo contra la API real (no solo con tests): con
+Postgres caído, el `unhandledRejection`/bootstrap-catch se disparó
+tal como se esperaba (ver hallazgo arriba). Con la API sana, se
+forzó un 404 real (`GET /ruta-inexistente`) y un 500 real
+(`GET /clients/no-es-un-uuid` con un token válido) contra el server
+corriendo: el 404 logueó `warn` con contexto de request y no
+reportó; el 500 logueó `error` con el stack completo, el header
+`Authorization` salió como `[REDACTED]`, `NoopErrorReportingService`
+avisó una sola vez (no una vez por request, gracias al flag interno)
+que no hay `SENTRY_DSN`, y el cuerpo de la respuesta al cliente
+siguió siendo `{"statusCode":500,"message":"Internal server error"}`
+— sin fuga de stack trace, exactamente el comportamiento por defecto
+de Nest de antes de este cambio.
+
+#### Verificación de este addendum
+
+- Tests nuevos: `AllExceptionsFilter` (5xx vs 4xx, log level,
+  reporte condicional, delegación a `BaseExceptionFilter`),
+  `SentryErrorReportingService` (init + captureException),
+  `NoopErrorReportingService` (no revienta, avisa una sola vez),
+  `ObservabilityModule` (el factory elige el proveedor correcto
+  según `SENTRY_DSN`) en `apps/api`; `ErrorBoundary` (renderiza
+  hijos normalmente, cae a la pantalla de fallback, loguea, botón de
+  recarga funciona) en `apps/web`.
+- `pnpm --filter api run test`: 65/65 verde (54 previos + 11
+  nuevos). `pnpm --filter web run test`: 19/19 verde (15 previos +
+  4 nuevos).
+- `pnpm turbo run lint build test --force`: 9/9 tareas verdes en
+  todo el monorepo.
+- Suite de tests de `apps/api` silenciada explícitamente
+  (`LOG_LEVEL=silent` inyectado vía un `setupFiles` nuevo en
+  `jest.config.js`) — sin esto, cada request de cada test emitía una
+  línea JSON completa, ahogando la salida de Jest; no afecta a
+  desarrollo ni producción.
+- `docs:check-readmes`: 21 módulos, todos con README (incluye el
+  nuevo `modules/observability/`).
+- `.env.example` actualizado con `LOG_LEVEL`, `SENTRY_DSN`,
+  `SENTRY_TRACES_SAMPLE_RATE`, siguiendo el mismo patrón comentado
+  que Stripe/SMTP.
+
 **Fase 9 (incluyendo este addendum) completa.** Como en el cierre de
 Fase 8: no hay una fase siguiente definida en ningún documento del
 proyecto. De la lista de brechas deliberadas, quedan: cámara en
@@ -965,9 +1077,9 @@ este documento en una sola pasada; es también la única de las dos
 vulnerabilidades restantes que sigue pendiente, junto con
 `fast-xml-parser`), la actualización mayor de `fast-xml-parser`
 dentro del toolchain de Android de RN (sin forma de verificar el
-build de Android real en este entorno), y la race angosta de
-recargas `goto()` en rápida sucesión documentada arriba (fuera de
-alcance porque requiere tocar la detección de reuso de tokens del
-servidor — reconfirmada viva, sin tocar, durante esta migración).
-Cualquier dirección posterior necesita alcance definido por el
-stakeholder.
+build de Android real en este entorno), la race angosta de recargas
+`goto()` en rápida sucesión (fuera de alcance porque requiere tocar
+la detección de reuso de tokens del servidor), y el SDK de Sentry
+del lado del navegador en `apps/web` (documentado arriba, dejado
+fuera deliberadamente de esta pasada de observabilidad). Cualquier
+dirección posterior necesita alcance definido por el stakeholder.

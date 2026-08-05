@@ -11,6 +11,31 @@ Stakeholder-directed follow-up to Fase 9 — further optimization "from
 all aspects" plus closing functionality gaps Fase 9 had documented as
 deliberately unbuilt (`docs/technical-log/phase-9.md` has the full log).
 
+- **Observability**: previously, an unhandled exception in production was
+  invisible — the default console logger and no error tracking. Added
+  structured JSON logging (`nestjs-pino`, credentials/tokens redacted,
+  `/health` excluded from access logs) app-wide; an `ErrorReportingService`
+  port (`modules/observability/`) bound to a real `SentryErrorReportingService`
+  when `SENTRY_DSN` is set, or a warn-once no-op otherwise — same
+  degradation pattern and honesty standard as `EmailService`/Stripe (no
+  real Sentry account in this project, so delivery is unverified, only
+  that the correct implementation binds); a global `AllExceptionsFilter`
+  that logs/reports every exception while delegating the actual HTTP
+  response to `BaseExceptionFilter.catch()` unchanged; process-level
+  `uncaughtException`/`unhandledRejection` handlers. Found while verifying
+  this live (killed Postgres before boot): registering the
+  `unhandledRejection` handler suppresses Node's default
+  terminate-on-unhandled-rejection behavior, so a boot failure left a
+  zombie process instead of exiting — fixed with an explicit `.catch()`
+  on the `bootstrap()` call itself. Also added `apps/web`'s first
+  `ErrorBoundary` (a render error used to blank the whole page); a
+  browser-side Sentry SDK is explicitly out of scope for this pass.
+  Verified live against the running API: a forced 404 logged a warning
+  with no report, a forced 500 logged an error with a redacted
+  `Authorization` header and a single (not per-request) "Sentry not
+  configured" warning, and the client-facing response body stayed
+  exactly `{"statusCode":500,"message":"Internal server error"}` — no
+  stack-trace leak, same as Nest's original default.
 - **Web auth pages for email links**: `ForgotPasswordPage`,
   `ResetPasswordPage`, `VerifyEmailPage`, `AcceptInvitationPage` — the
   four pages `SmtpEmailService`'s real emails (shipped in Fase 9) link

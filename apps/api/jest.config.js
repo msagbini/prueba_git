@@ -4,5 +4,5 @@ module.exports = {
   testEnvironment: 'node',
   rootDir: '.',
   testRegex: '.*\\.spec\\.ts$',
-  setupFiles: ['dotenv/config'],
+  setupFiles: ['dotenv/config', '<rootDir>/test/silence-logs.setup.ts'],
 };

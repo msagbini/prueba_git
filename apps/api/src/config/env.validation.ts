@@ -50,6 +50,18 @@ export const envSchema = z.object({
 
   /** Local disk directory job-attachment uploads are written under, one subfolder per organization. */
   UPLOADS_DIR: z.string().default('./uploads'),
+
+  /** Minimum severity written to the structured (pino) logger. */
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+
+  // Error tracking (Fase 9.1) — optional, like Stripe/SMTP above. Without
+  // SENTRY_DSN, ErrorReportingService degrades to a no-op (unhandled
+  // errors are still captured by the structured logger, just not shipped
+  // anywhere external) rather than crashing the app over an unconfigured
+  // optional feature. No real Sentry account exists in this project — see
+  // docs/technical-log/phase-9.md for what is/isn't live-verified.
+  SENTRY_DSN: z.string().optional(),
+  SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
