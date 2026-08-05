@@ -10,6 +10,7 @@ import ColorPicker from "@/components/ColorPicker";
 import LeadTimeNote from "@/components/LeadTimeNote";
 
 type Status = "idle" | "submitting" | "success" | "error";
+type Fulfillment = "delivery" | "pickup";
 
 const ALL_SHAPE_IDS = shapes.map((s) => s.id);
 
@@ -23,6 +24,8 @@ export default function CustomOrderPage() {
   const [eventDate, setEventDate] = useState("");
   const [message, setMessage] = useState("");
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+  const [fulfillment, setFulfillment] = useState<Fulfillment>("delivery");
+  const [lastFulfillment, setLastFulfillment] = useState<Fulfillment>("delivery");
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -52,6 +55,7 @@ export default function CustomOrderPage() {
       if (!res.ok) {
         throw new Error(data.error ?? "Something went wrong.");
       }
+      setLastFulfillment(fulfillment);
       setStatus("success");
       form.reset();
       setImageDataUrl(null);
@@ -60,6 +64,7 @@ export default function CustomOrderPage() {
       setCharacter("1");
       setColorId("");
       setEventDate("");
+      setFulfillment("delivery");
     } catch (err) {
       setStatus("error");
       setErrorMessage(
@@ -84,7 +89,9 @@ export default function CustomOrderPage() {
             Thanks! Your custom order request has been received.
           </p>
           <p className="mt-1 text-sm text-green-700">
-            Grace will reply to your email within 1-2 business days.
+            Grace will reply to your email within 1-2 business days with a
+            quote{lastFulfillment === "delivery" ? " and a shipping cost" : ""}{" "}
+            and to confirm {lastFulfillment === "pickup" ? "a pickup time" : "delivery details"}.
           </p>
         </div>
       ) : (
@@ -175,6 +182,54 @@ export default function CustomOrderPage() {
                 className="mt-1 w-full rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
               />
               <LeadTimeNote date={eventDate} />
+            </div>
+
+            <div>
+              <label className="text-sm font-semibold text-berry-dark">
+                Pickup or delivery?
+              </label>
+              <div className="mt-1 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setFulfillment("delivery")}
+                  className={`flex-1 rounded-lg border px-4 py-2 text-sm font-medium transition ${
+                    fulfillment === "delivery"
+                      ? "border-berry bg-blush text-berry-dark"
+                      : "border-berry/20 text-foreground/70"
+                  }`}
+                >
+                  🚚 Ship to me
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFulfillment("pickup")}
+                  className={`flex-1 rounded-lg border px-4 py-2 text-sm font-medium transition ${
+                    fulfillment === "pickup"
+                      ? "border-berry bg-blush text-berry-dark"
+                      : "border-berry/20 text-foreground/70"
+                  }`}
+                >
+                  🏠 Pickup in person
+                </button>
+              </div>
+              <input type="hidden" name="fulfillment" value={fulfillment} />
+
+              {fulfillment === "delivery" && (
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <input
+                    name="suburb"
+                    required
+                    placeholder="Suburb"
+                    className="rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
+                  />
+                  <input
+                    name="postcode"
+                    required
+                    placeholder="Postcode"
+                    className="rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
+                  />
+                </div>
+              )}
             </div>
 
             <div>

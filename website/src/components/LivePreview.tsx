@@ -18,6 +18,17 @@ function isDarkHex(hex?: string) {
   return 0.299 * r + 0.587 * g + 0.114 * b < 130;
 }
 
+// Derives a matching edge/border tone from the chosen fill colour so the
+// outline never clashes with it (e.g. a white category edge showing
+// through a dark custom fill on the heart/star notch).
+function darken(hex: string, amount = 0.28) {
+  const n = parseInt(hex.replace("#", ""), 16);
+  const r = Math.round(((n >> 16) & 255) * (1 - amount));
+  const g = Math.round(((n >> 8) & 255) * (1 - amount));
+  const b = Math.round((n & 255) * (1 - amount));
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
 function shapeGeometry(shape: ShapeId) {
   switch (shape) {
     case "circle":
@@ -60,13 +71,14 @@ function ShapeFrame({
 }) {
   const material = MATERIAL[category] ?? MATERIAL["cookie-cutters"];
   const geometry = shapeGeometry(shape);
+  const borderColor = fillColor ? darken(fillColor) : material.edge;
 
   return (
     <div
       className={`relative flex items-center justify-center border-4 shadow-lg transition-all duration-300 ${className}`}
       style={{
         ...geometry,
-        borderColor: material.edge,
+        borderColor,
         backgroundColor: fillColor ?? material.base,
         backgroundImage: imageDataUrl ? `url(${imageDataUrl})` : undefined,
         backgroundSize: "cover",
@@ -83,7 +95,13 @@ function ShapeFrame({
         </span>
       )}
       {!imageDataUrl && !message && (
-        <span className="text-3xl">{material.fallback}</span>
+        <span
+          className={`flex items-center justify-center rounded-full bg-white/60 text-3xl shadow-sm ${
+            shape === "heart" || shape === "star" ? "mt-6 h-14 w-14" : "h-14 w-14"
+          }`}
+        >
+          {material.fallback}
+        </span>
       )}
     </div>
   );

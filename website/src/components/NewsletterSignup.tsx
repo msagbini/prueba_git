@@ -7,21 +7,29 @@ type Status = "idle" | "submitting" | "success" | "error";
 export default function NewsletterSignup() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>("idle");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatus("submitting");
+    setErrorMessage("");
     try {
       const res = await fetch("/api/newsletter", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
-      if (!res.ok) throw new Error();
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Something went wrong, please try again.");
+      }
       setStatus("success");
       setEmail("");
-    } catch {
+    } catch (err) {
       setStatus("error");
+      setErrorMessage(
+        err instanceof Error ? err.message : "Something went wrong, please try again.",
+      );
     }
   };
 
@@ -34,24 +42,26 @@ export default function NewsletterSignup() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex max-w-xs gap-2">
-      <input
-        type="email"
-        required
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="Your email"
-        className="w-full rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
-      />
-      <button
-        type="submit"
-        disabled={status === "submitting"}
-        className="shrink-0 rounded-lg bg-berry px-4 text-sm font-semibold text-white hover:bg-berry-dark disabled:opacity-60"
-      >
-        Get 10% off
-      </button>
+    <form onSubmit={handleSubmit} className="max-w-xs">
+      <div className="flex gap-2">
+        <input
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Your email"
+          className="w-full rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
+        />
+        <button
+          type="submit"
+          disabled={status === "submitting"}
+          className="shrink-0 rounded-lg bg-berry px-4 text-sm font-semibold text-white hover:bg-berry-dark disabled:opacity-60"
+        >
+          {status === "submitting" ? "..." : "Get 10% off"}
+        </button>
+      </div>
       {status === "error" && (
-        <span className="sr-only">Something went wrong, please try again.</span>
+        <p className="mt-1.5 text-xs font-medium text-red-600">{errorMessage}</p>
       )}
     </form>
   );
