@@ -22,9 +22,10 @@ export function ForgotPasswordPage(): JSX.Element {
     setSubmitting(true);
     try {
       await apiFetch('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) });
-    } finally {
+    } catch {
       // Always show the same outcome, success or failure — matching the
       // API's own "never reveal whether the address exists" behavior.
+    } finally {
       setSubmitting(false);
       setSent(true);
     }
