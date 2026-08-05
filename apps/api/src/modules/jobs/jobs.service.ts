@@ -128,14 +128,17 @@ export class JobsService {
     if (dto.serviceAddressId) {
       await this.assertAddressBelongsToClient(dto.serviceAddressId, dto.clientId);
     }
+    const scheduledStart = toDateOrUndefined(dto.scheduledStart);
+    const scheduledEnd = toDateOrUndefined(dto.scheduledEnd);
+    this.assertValidScheduleWindow(scheduledStart, scheduledEnd);
 
     const job = await this.tenantContext.client.job.create({
       data: {
         organizationId,
         clientId: dto.clientId,
         serviceAddressId: dto.serviceAddressId,
-        scheduledStart: toDateOrUndefined(dto.scheduledStart),
-        scheduledEnd: toDateOrUndefined(dto.scheduledEnd),
+        scheduledStart,
+        scheduledEnd,
         recurrenceRule: dto.recurrenceRule,
         notes: dto.notes,
         createdByUserId: actorUserId,
@@ -184,6 +187,9 @@ export class JobsService {
     if (dto.serviceAddressId) {
       await this.assertAddressBelongsToClient(dto.serviceAddressId, before.clientId);
     }
+    const scheduledStart = toDateOrUndefined(dto.scheduledStart) ?? before.scheduledStart;
+    const scheduledEnd = toDateOrUndefined(dto.scheduledEnd) ?? before.scheduledEnd;
+    this.assertValidScheduleWindow(scheduledStart, scheduledEnd);
 
     const after = await this.tenantContext.client.job.update({
       where: { id },
@@ -520,6 +526,23 @@ export class JobsService {
     });
     if (!address) {
       throw new BadRequestException('serviceAddressId does not belong to the job’s client.');
+    }
+  }
+
+  /**
+   * Confirms a job's schedule window is well-formed. Only checked when
+   * both ends are set — an open-ended start or end (either currently
+   * unset, or not part of this update) has nothing to compare against.
+   * @param scheduledStart the resulting scheduledStart after this call
+   * @param scheduledEnd the resulting scheduledEnd after this call
+   * @throws BadRequestException if scheduledEnd isn't after scheduledStart
+   */
+  private assertValidScheduleWindow(
+    scheduledStart: Date | null | undefined,
+    scheduledEnd: Date | null | undefined,
+  ): void {
+    if (scheduledStart && scheduledEnd && scheduledEnd <= scheduledStart) {
+      throw new BadRequestException('scheduledEnd must be after scheduledStart.');
     }
   }
 }

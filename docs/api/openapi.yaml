@@ -1467,6 +1467,9 @@ components:
           type: string
         locale:
           type: string
+        defaultCurrency:
+          type: string
+          description: ISO 4217 currency code new invoices default to, e.g. "AUD".
         settings:
           type: object
           description: >-

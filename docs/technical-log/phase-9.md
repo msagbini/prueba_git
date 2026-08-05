@@ -1408,6 +1408,131 @@ Location` de `lib.dom.d.ts` no permite (reemplazada por
   `pnpm turbo run ... build ...` es una verificación necesaria además
   de `vitest run`, no redundante con ella.
 
+### CI real de GitHub Actions: dos bugs que el sandbox local nunca podía haber mostrado
+
+El PR de esta rama corrió por primera vez en un runner real de GitHub
+Actions (hasta ahora, toda la verificación de este proyecto había
+sido `pnpm turbo run ... --force` local). Dos fallos aparecieron, en
+secuencia, que ninguna corrida local — en este sandbox ni en ningún
+entorno de desarrollo ya configurado — podía haber detectado:
+
+- **`pnpm/action-setup@v4` rechazó arrancar**: `"Multiple versions of
+pnpm specified"` — el workflow fijaba `version: 10` a la vez que
+  `package.json` ya fija `pnpm@10.33.0` vía `packageManager`, y la
+  acción se niega a correr si ambos están presentes (ambigüedad
+  deliberada de su parte). Arreglado quitando el `version:` redundante
+  del workflow — la acción ya lee la versión exacta desde
+  `packageManager`.
+- **`sh: 1: eslint: not found`** en el step de lint, apenas se resolvió
+  lo anterior: ningún paquete del monorepo declaraba `eslint` como
+  dependencia propia — solo `packages/config` lo tenía, y bajo pnpm
+  estricto eso no se propaga a quien lo consume. Esto estuvo
+  invisible en **todas** las corridas de este proyecto hasta ahora
+  porque el entorno de desarrollo usado en esta sesión tiene un
+  `eslint` global instalado por coincidencia (`/opt/node22/bin/eslint`),
+  ajeno por completo a este repo; los runners limpios de GitHub
+  Actions no tienen ese atajo. Arreglado agregando `eslint` como
+  devDependency de la raíz (mismo patrón que `typescript`/`prettier`,
+  ya declarados ahí y no en cada app). Verificado ocultando
+  temporalmente el `eslint` global de este sandbox y confirmando que
+  `pnpm turbo run lint --force` seguía resolviendo y pasando en las
+  tres apps sin él.
+
+### Bug real de Windows, encontrado guiando el setup local en una máquina real
+
+Verificar "¿corre en una máquina limpia?" en CI no fue suficiente —
+CI corre en Linux. Guiar la instalación completa en una máquina
+Windows real (clonar, instalar, `prisma migrate deploy`) expuso un
+tercer bug, distinto a los dos de arriba:
+
+- **Un checkout en Windows con `core.autocrlf=true` (el default común
+  del instalador de Git for Windows) convierte cada salto de línea
+  LF a CRLF**, incluyendo `apps/api/.env.example`. Copiado tal cual a
+  `.env`, el `\r` de más quedaba pegado al final de cada valor —
+  `MIGRATION_DATABASE_URL=...&schema=public\r` — y rompía el parseo
+  de la URL de conexión en Prisma, con un mensaje de error genérico y
+  engañoso (`"authentication failed for `(not available)`"`) que no
+  tenía nada que ver con la causa real. Diagnosticado leyendo el
+  archivo con Node (`fs.readFileSync(...).split('\n')`, mostrando el
+  `\r` explícito vía `JSON.stringify`) en vez de confiar en lo que
+  `type`/`cat` muestran en una consola de Windows, que ocultan el
+  carácter. Arreglado con un `.gitattributes` (`* text=auto eol=lf`)
+  en la raíz — fuerza LF en el checkout sin importar la config local
+  del contribuidor, en vez de pedirle a cada persona con Windows que
+  se acuerde de convertir el archivo a mano.
+- (No es un bug de este repo, pero vale dejarlo anotado: en la misma
+  sesión de troubleshooting apareció un cuarto problema — un
+  PostgreSQL nativo de Windows, instalado para otro proyecto,
+  compitiendo por el puerto 5432 con el Postgres de Docker de este
+  proyecto. Windows enruta las conexiones nuevas al servicio nativo,
+  no al contenedor, así que `docker exec` (que entra directo al
+  contenedor) funcionaba pero la conexión real desde Prisma fallaba
+  siempre. Resuelto deteniendo el servicio nativo — específico de esa
+  máquina, no algo para codificar en este repo.)
+
+### Dos bugs de producto, encontrados usando la app de verdad por primera vez
+
+Con la app corriendo end-to-end (API + Postgres + web) por primera
+vez en este proyecto — hasta ahora, "verificado" había significado
+`curl`/tests automatizados, nunca clickear la UI real como lo haría
+un usuario — aparecieron dos bugs de producto genuinos en minutos:
+
+- **Un job se podía guardar con `scheduledEnd` anterior a
+  `scheduledStart`.** Ni `CreateJobDto`/`UpdateJobDto` ni
+  `JobsService` validaban el orden de las fechas. Arreglado con
+  `JobsService.assertValidScheduleWindow` (mismo patrón que las
+  demás validaciones cruzadas del servicio — `BadRequestException`
+  explícito, no un decorador de `class-validator`, porque la regla
+  necesita comparar contra el estado existente del job en un
+  `PATCH` parcial, no solo contra el propio payload). Cubre tanto
+  `POST /jobs` como `PATCH /jobs/:id` — en el update, si solo uno de
+  los dos campos viene en el payload, se compara contra el valor ya
+  guardado del otro.
+- **La moneda de las facturas estaba fija en `"USD"`, sin forma de
+  cambiarla** — ni al crear la organización ni al crear una factura;
+  era el default de la columna en Prisma, nunca seteado
+  explícitamente en ningún lado. Encontrado por un usuario real en
+  Australia viendo sus facturas en USD. Arreglado agregando
+  `Organization.defaultCurrency` (migración
+  `20260805065546_organization_default_currency`, default `"USD"`
+  para no romper organizaciones existentes), seteable vía el
+  `PATCH /organizations/me` que ya existía (mismo mecanismo que
+  `timezone`/`locale`, validado como código ISO 4217 de 3 letras con
+  `@Matches`), y `InvoicesService.createWithGeneratedNumber` ahora lee
+  `organization.defaultCurrency` en vez de dejar que el default de
+  columna decida. El signup sigue sembrando `"USD"` igual que ya
+  sembraba `'UTC'`/`'en-US'` para timezone/locale — se cambia después
+  vía el mismo endpoint, no se agregó un campo nuevo al signup.
+  `apps/web` no tiene todavía una página de "organization settings"
+  (no existía antes de este cambio), así que por ahora se setea vía
+  API directamente; construir esa página queda fuera de este
+  addendum salvo que se pida explícitamente.
+
+#### Verificación de estos cinco hallazgos
+
+- CI de GitHub Actions en el PR: los 19 steps de la corrida
+  `618ef2f` pasaron — lint, build, test, los dos gates de cobertura,
+  build de la imagen Docker, check de READMEs.
+- El bug de CRLF se reprodujo en vivo en una máquina Windows real
+  (no simulado) y se confirmó arreglado releyendo el `.env`
+  regenerado con el mismo método de diagnóstico.
+- El conflicto de puerto de Postgres se diagnosticó con
+  `netstat -ano`/`tasklist` en la misma máquina, identificando el PID
+  del proceso nativo (`postgres.exe`, servicio `PostgreSQL-x64-18`)
+  contra el de Docker (`com.docker.backend.exe`).
+- Los dos bugs de producto tienen tests e2e nuevos en
+  `business-flows.e2e.spec.ts` (`rejects a job whose scheduledEnd is
+not after scheduledStart`, `defaults new invoices to the
+organization's configured currency`), corridos 3 veces seguidas sin
+  flakiness: 67/67 verdes (65 + 2 nuevos).
+- `pnpm --filter api run test:coverage`: gate de cobertura sigue
+  cumpliendo con margen (82.5% statements ≥ 78% requerido) después de
+  agregar el código nuevo.
+- `pnpm turbo run lint build test --force --filter=@dos/api`: 3/3
+  verde.
+- `docs/api/openapi.yaml` regenerado (`pnpm run docs:api`) para
+  reflejar el nuevo campo `defaultCurrency` en `UpdateOrganizationDto`.
+
 **Fase 9 (incluyendo todos sus addenda) completa.** Como en el cierre
 de Fase 8: no hay una fase siguiente definida en ningún documento del
 proyecto. De la lista de brechas deliberadas, quedan: cámara en
@@ -1418,5 +1543,5 @@ el monorepo), y la race angosta de recargas `goto()` en rápida
 sucesión (fuera de alcance porque requiere tocar la detección de
 reuso de tokens del servidor). La cobertura de tests de la capa de
 páginas de `apps/web`, que era el último punto de esta lista, quedó
-cerrada en este addendum. Cualquier dirección posterior necesita
-alcance definido por el stakeholder.
+cerrada en un addendum anterior. Cualquier dirección posterior
+necesita alcance definido por el stakeholder.

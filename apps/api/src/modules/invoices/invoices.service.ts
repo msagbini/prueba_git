@@ -249,6 +249,14 @@ export class InvoicesService {
     organizationId: string,
     dto: CreateInvoiceDto,
   ): Promise<Invoice> {
+    // Every invoice bills in its organization's configured currency
+    // (Organization.defaultCurrency, settable via PATCH /organizations/me)
+    // rather than the column's own schema-level "USD" default, which would
+    // otherwise apply regardless of what the organization is set to.
+    const organization = await this.tenantContext.client.organization.findFirstOrThrow({
+      where: { id: organizationId },
+      select: { defaultCurrency: true },
+    });
     for (let attempt = 0; attempt < MAX_INVOICE_NUMBER_ATTEMPTS; attempt++) {
       const existingCount = await this.tenantContext.client.invoice.count();
       const invoiceNumber = `INV-${String(existingCount + 1 + attempt).padStart(4, '0')}`;
@@ -260,6 +268,7 @@ export class InvoicesService {
             invoiceNumber,
             issueDate: new Date(dto.issueDate),
             dueDate: new Date(dto.dueDate),
+            currency: organization.defaultCurrency,
             subtotal: 0,
             taxAmount: 0,
             total: 0,

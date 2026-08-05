@@ -250,6 +250,47 @@ deliberately unbuilt (`docs/technical-log/phase-9.md` has the full log).
 
 ### Fixed — Fase 9.1
 
+- **CI pipeline, two real failures on its first run against a GitHub
+  Actions runner** (previously only verified via local `pnpm turbo
+  run ... --force`, which couldn't have caught either): `pnpm/
+  action-setup@v4` refused to start because the workflow's own
+  `version: 10` conflicted with `package.json`'s `packageManager`
+  field — removed the redundant workflow input. Once that cleared,
+  `eslint: not found` surfaced in the lint step — no package in the
+  monorepo declared `eslint` as its own dependency (only `packages/
+  config` did, which doesn't propagate under strict pnpm), invisible
+  locally only because this dev environment happens to have a global
+  `eslint` unrelated to the project. Fixed by declaring `eslint` as a
+  root devDependency, matching how `typescript`/`prettier` are
+  already handled; verified by hiding the global binary and
+  confirming `pnpm turbo run lint --force` still resolves and passes.
+- **Windows checkouts silently corrupting `.env` files**: a Windows
+  Git install with the common `core.autocrlf=true` default converts
+  every checked-out LF to CRLF, including `apps/api/.env.example` —
+  copied verbatim to `.env`, the trailing `\r` broke Prisma's
+  connection-string parsing with a misleading "authentication failed
+  for `(not available)`" error that had nothing to do with the actual
+  credentials. Reproduced live walking through setup on a real
+  Windows machine. Fixed with a root `.gitattributes` (`* text=auto
+  eol=lf`) forcing LF on checkout regardless of the contributor's
+  local git config.
+- **Jobs could be saved with `scheduledEnd` before `scheduledStart`**:
+  neither `CreateJobDto`/`UpdateJobDto` nor `JobsService` validated
+  the schedule window's order. Fixed with `JobsService.
+  assertValidScheduleWindow`, covering both `POST /jobs` and `PATCH
+  /jobs/:id` (a partial update compares the field being changed
+  against the job's existing value for the other one). Found live-
+  testing the running app for the first time end-to-end.
+- **Invoice currency hardcoded to `"USD"`, with no way to change it**:
+  the column's Prisma default was never overridden anywhere — not at
+  signup, not at invoice creation. Found by a real user in Australia
+  seeing every invoice in USD. Added `Organization.defaultCurrency`
+  (migration, default `"USD"` so existing organizations are
+  unaffected), settable via the existing `PATCH /organizations/me`
+  (same mechanism as `timezone`/`locale`, validated as a 3-letter ISO
+  4217 code); `InvoicesService` now reads it instead of relying on
+  the column default. No web settings page exists yet for this — set
+  via the API directly for now.
 - **Refresh-token rotation race (false logout on page load)**: found
   while live-verifying the react-router migration above. Root cause:
   React `StrictMode`'s dev-mode double-invoke of `AuthContext`'s

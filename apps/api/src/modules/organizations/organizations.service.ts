@@ -52,6 +52,7 @@ export class OrganizationsService {
         name: dto.name,
         timezone: dto.timezone,
         locale: dto.locale,
+        defaultCurrency: dto.defaultCurrency,
         settings: dto.settings as Prisma.InputJsonValue | undefined,
       },
     });

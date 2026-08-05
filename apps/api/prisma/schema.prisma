@@ -76,6 +76,13 @@ model Organization {
   industryVerticalId String             @map("industry_vertical_id") @db.Uuid
   timezone           String
   locale             String
+  /// ISO 4217 currency code new invoices default to (see
+  /// InvoicesService.createWithGeneratedNumber) — settable via
+  /// PATCH /organizations/me, same as timezone/locale. Signup still seeds
+  /// "USD" like it does 'UTC'/'en-US' for timezone/locale; there's no
+  /// locale-to-currency inference table in this codebase, so guessing one
+  /// from `locale` would be a fabricated mapping, not a real default.
+  defaultCurrency    String             @default("USD") @map("default_currency")
   status             OrganizationStatus @default(TRIAL)
   /// Vertical-specific configuration (e.g. default job duration, terminology
   /// overrides). Deliberately opaque/JSON rather than typed columns per

@@ -159,6 +159,31 @@ describe('business flows (e2e)', () => {
       .expect(400);
   });
 
+  it('rejects a job whose scheduledEnd is not after scheduledStart', async () => {
+    await request(server())
+      .post('/jobs')
+      .set('Authorization', `Bearer ${ownerAccessToken}`)
+      .send({
+        clientId: clientAId,
+        scheduledStart: '2026-08-10T16:00:00.000Z',
+        scheduledEnd: '2026-08-10T08:00:00.000Z',
+      })
+      .expect(400);
+
+    // Same rule on a partial update: setting only scheduledEnd must still
+    // respect the job's existing scheduledStart, and vice versa.
+    await request(server())
+      .patch(`/jobs/${jobAId}`)
+      .set('Authorization', `Bearer ${ownerAccessToken}`)
+      .send({ scheduledStart: '2026-08-12T16:00:00.000Z' })
+      .expect(200);
+    await request(server())
+      .patch(`/jobs/${jobAId}`)
+      .set('Authorization', `Bearer ${ownerAccessToken}`)
+      .send({ scheduledEnd: '2026-08-12T08:00:00.000Z' })
+      .expect(400);
+  });
+
   it('snapshots the service price when adding it to a job', async () => {
     const jobService = await request(server())
       .post(`/jobs/${jobAId}/services`)
@@ -446,6 +471,35 @@ describe('business flows (e2e)', () => {
       .get('/invoices/00000000-0000-0000-0000-000000000000/pdf')
       .set('Authorization', `Bearer ${ownerAccessToken}`)
       .expect(404);
+  });
+
+  it('defaults new invoices to the organization’s configured currency', async () => {
+    await request(server())
+      .patch('/organizations/me')
+      .set('Authorization', `Bearer ${ownerAccessToken}`)
+      .send({ defaultCurrency: 'not-a-code' })
+      .expect(400);
+
+    await request(server())
+      .patch('/organizations/me')
+      .set('Authorization', `Bearer ${ownerAccessToken}`)
+      .send({ defaultCurrency: 'AUD' })
+      .expect(200);
+
+    const invoiceAfterCurrencyChange = await request(server())
+      .post('/invoices')
+      .set('Authorization', `Bearer ${ownerAccessToken}`)
+      .send({ clientId: clientAId, issueDate: '2026-08-01', dueDate: '2026-08-15' })
+      .expect(201);
+    expect(invoiceAfterCurrencyChange.body.currency).toBe('AUD');
+
+    // The invoice created earlier in this suite, before the organization's
+    // currency changed, must not be retroactively affected.
+    const earlierInvoice = await request(server())
+      .get(`/invoices/${invoiceId}`)
+      .set('Authorization', `Bearer ${ownerAccessToken}`)
+      .expect(200);
+    expect(earlierInvoice.body.currency).toBe('USD');
   });
 
   it('records every mutation above in the audit trail', async () => {
