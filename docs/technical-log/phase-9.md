@@ -802,14 +802,92 @@ brecha conocida, no oculta.
   sesión se mantiene autenticada en ambos), `verify-logout-clean.mjs`
   (logout por navegación client-side sigue limpio).
 
+### Auditoría de dependencias, segunda pasada
+
+Una nueva corrida de `pnpm audit --prod` (auditoría vive contra la
+base de datos de advisories, cambia con el tiempo — no es la misma
+lista que la del cierre de Fase 9 original) mostró 13
+vulnerabilidades, la mayoría en dependencias **transitivas** que
+`@nestjs/config`, `@nestjs/swagger`, `@nestjs/common` y
+`@nestjs/platform-express` fijan a una versión exacta más vieja que
+la parchada — no algo que un simple `pnpm update` resuelva, porque el
+`package.json` de esos paquetes de NestJS pide la versión exacta
+vulnerable.
+
+- **10 de las 13, corregidas** con `pnpm.overrides` en el
+  `package.json` raíz, targeteando la versión exacta vulnerable como
+  clave (no el nombre del paquete a secas) para no arrastrar
+  resoluciones no relacionadas — por ejemplo `js-yaml` tiene tres
+  instancias en el árbol (3.15.1 vía Jest, 4.1.0 vía
+  `@nestjs/swagger` — la vulnerable —, 4.3.1 vía ESLint — ya sana);
+  el override solo apunta a la 4.1.0:
+  - `lodash@4.17.21 → ^4.18.1` (vía `@nestjs/config`,
+    `@nestjs/swagger` — inyección de código en `_.template` y dos
+    prototype-pollution).
+  - `js-yaml@4.1.0 → ^4.3.1` (vía `@nestjs/swagger` — CPU cuadrático
+    y prototype-pollution en `merge`).
+  - `file-type@20.4.1 → ^21.3.2` (vía `@nestjs/common` — loop
+    infinito parseando ASF, DoS por bomba de descompresión ZIP).
+  - `qs@6.14.2 → ^6.15.3` / `body-parser@1.20.4 → ^1.20.6` (vía
+    `express`/`@nestjs/platform-express` — DoS en `stringify`,
+    enforcement de límite de tamaño que se desactivaba en silencio
+    con un valor de `limit` inválido).
+  - `multer@2.0.2 → ^2.2.0` (vía `@nestjs/platform-express` — cuatro
+    CVEs de denegación de servicio, incluyendo limpieza incompleta de
+    subidas abortadas y anidamiento profundo de campos). Este es el
+    único de los seis con superficie de ataque real y directa en esta
+    app — es la librería que procesa las subidas de fotos de
+    adjuntos de jobs (Fase 9) —, así que mereció su propia
+    verificación dirigida, no solo confiar en que "es un bump menor":
+    `test/job-attachments.e2e.spec.ts` (que ejercita el flujo de
+    subida real contra la API) sigue en verde después del bump.
+  - Todos son bumps de parche o menor dentro del mismo major de cada
+    paquete — ninguno cambia una API que este proyecto use
+    directamente (son dependencias de dependencias, nunca importadas
+    por código propio).
+- **3 de las 13, dejadas fuera de esta pasada deliberadamente** —
+  cada una requeriría una migración mayor de versión, con su propio
+  riesgo de romper algo y su propia verificación dedicada, no algo
+  para mezclar con bumps de parche:
+  - **`@nestjs/core`** necesita `>=11.1.18` — es decir, terminar la
+    migración de NestJS 10→11 completa (Express v5, sintaxis de rutas
+    de `path-to-regexp` v8), ya identificada como pendiente desde el
+    cierre de Fase 9 original.
+  - **`react-router`** necesita `>=8.3.0` — una migración 7→8 nueva,
+    no identificada hasta ahora (la migración 6→7 de este mismo
+    documento ya quedó verificada y cerrada; esta es otra, posterior).
+  - **`fast-xml-parser`** necesita `>=5.7.0` — enterrada dentro del
+    propio toolchain de Android de React Native
+    (`@react-native-community/cli-platform-android`), una herramienta
+    de build de desarrollo, no código de runtime de la app. No se
+    forzó el override: es un salto de major (4→5) en una herramienta
+    de terceros sin dispositivo/emulador disponible en este entorno
+    para verificar que el build de Android siga funcionando después.
+
+`pnpm audit --prod`: 13 → 3 vulnerabilidades (las tres migraciones
+mayores de arriba).
+
+#### Verificación de esta pasada de dependencias
+
+- `pnpm install` limpio con los overrides aplicados.
+- `pnpm turbo run lint build test --force` — 9/9 tareas verdes en
+  todo el monorepo, incluyendo `test/job-attachments.e2e.spec.ts`
+  (multer + file-type, verificado en vivo contra Postgres real) y el
+  resto de la suite de 54 tests de `apps/api`.
+- `pnpm audit --prod`: 13 → 3, las tres restantes documentadas arriba
+  como migraciones mayores fuera de alcance.
+
 **Fase 9 (incluyendo este addendum) completa.** Como en el cierre de
 Fase 8: no hay una fase siguiente definida en ningún documento del
 proyecto. De la lista de brechas deliberadas, quedan: cámara en
 mobile, la migración de NestJS 10→11 (superficie de cambios
 incompatibles — Express v5, sintaxis de rutas de path-to-regexp v8 —
 demasiado grande para verificar con el mismo rigor que el resto de
-este documento en una sola pasada), y la race angosta de recargas
-`goto()` en rápida sucesión documentada arriba (fuera de alcance
-porque requiere tocar la detección de reuso de tokens del servidor).
-Cualquier dirección posterior necesita alcance definido por el
-stakeholder.
+este documento en una sola pasada), la migración de react-router 7→8
+(nueva, encontrada en esta pasada de auditoría), la actualización
+mayor de `fast-xml-parser` dentro del toolchain de Android de RN
+(sin forma de verificar el build de Android real en este entorno), y
+la race angosta de recargas `goto()` en rápida sucesión documentada
+arriba (fuera de alcance porque requiere tocar la detección de reuso
+de tokens del servidor). Cualquier dirección posterior necesita
+alcance definido por el stakeholder.

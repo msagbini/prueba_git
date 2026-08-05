@@ -74,6 +74,28 @@ deliberately unbuilt (`docs/technical-log/phase-9.md` has the full log).
   Playwright: all nav links, dashboard shortcuts, browser back/
   forward, logout, and protected/public route guarding.
 
+- **Dependency vulnerabilities, second pass**: `pnpm audit --prod`
+  found 13 vulnerabilities, mostly in transitive dependencies pinned
+  to an exact, older version inside `@nestjs/config`,
+  `@nestjs/swagger`, `@nestjs/common`, and `@nestjs/platform-express`
+  — not fixable with a plain `pnpm update`. Added `pnpm.overrides`
+  (keyed to the specific vulnerable version, not the bare package
+  name, so unrelated resolutions of the same package elsewhere in the
+  tree are untouched) forcing patch/minor bumps: `lodash` 4.17.21 →
+  4.18.1, `js-yaml` 4.1.0 → 4.3.1, `file-type` 20.4.1 → 21.3.2, `qs`
+  6.14.2 → 6.15.3, `body-parser` 1.20.4 → 1.20.6, `multer` 2.0.2 →
+  2.2.0. `multer` (four DoS CVEs) is the one with real attack surface
+  in this app — it's the library handling job-attachment photo
+  uploads — so it got targeted verification beyond "it's a minor
+  bump": `test/job-attachments.e2e.spec.ts` stayed green. `pnpm audit
+  --prod` goes from 13 to 3. The remaining 3 each need a major-version
+  migration deliberately left out of this pass: `@nestjs/core` (needs
+  11.1.18+, the still-pending Nest 10→11 migration),
+  `react-router` (needs 8.3.0+, a newly-found 7→8 migration beyond
+  the 6→7 one above), and `fast-xml-parser` (needs 5.7.0+, buried
+  inside React Native's own Android CLI build tooling — unverifiable
+  without a device/emulator in this environment).
+
 ### Fixed — Fase 9.1
 
 - **Refresh-token rotation race (false logout on page load)**: found
