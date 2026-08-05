@@ -149,6 +149,39 @@ deliberately unbuilt (`docs/technical-log/phase-9.md` has the full log).
   `goto()` reloads back-to-back) reproduced the already-documented
   refresh-token race below in its original form — confirmed it's
   still there and untouched, not something this migration introduced.
+- **NestJS 10→11** (`apps/api`): the last big migration deliberately
+  deferred since Fase 9's original close-out. Investigated the real
+  breaking-change surface against this codebase before touching
+  anything, same method as the router migrations above: audited
+  every `@Controller`/`@Get`/`@Post`/`@Patch`/`@Delete` decorator
+  (none use wildcard or optional-param routes — Express 5's stricter
+  `path-to-regexp` v8 was the headline risk, and this app never used
+  the syntax it dropped) and every `app.use()` call (only
+  version-agnostic middleware). Real finding: `nestjs-cls`
+  (`AsyncLocalStorage`-based tenant context — the core multi-tenancy
+  mechanism) was pinned to a version whose own peer deps cap out
+  below Nest 11; bumped 4.4.1 → 6.2.1 after confirming its `.d.ts`
+  keeps the exact `ClsModule.forRoot`/`ClsService.get`/`.set` surface
+  this app depends on. Bumped all `@nestjs/*` packages to their 11.x
+  majors; `multer`/`@types/multer` (already 2.2.0 from the earlier
+  security pass) turned out to already match what
+  `@nestjs/platform-express@11` ships. Result: clean install, zero
+  peer-dep warnings, zero TypeScript errors, zero application code
+  changes — only `package.json`. Found a fresh, unrelated `js-yaml`
+  vulnerability pulled in by the new `@nestjs/swagger@11` (patched
+  via the same targeted-override pattern; the old, now-unmatched
+  `js-yaml@4.1.0` override was removed as dead config). `pnpm audit
+  --prod` goes from 2 to 1 — resolves the last `apps/api`
+  vulnerability, leaving only the deferred `fast-xml-parser` one.
+  Regenerated OpenAPI doc is byte-identical in content (only a
+  cosmetic key-reordering diff). **Verified live against the running
+  server** with Express 5 confirmed in the actual dependency tree:
+  full CRUD with path params and a nested route, a real two-
+  organization cross-tenant isolation check (org B gets a 404, not
+  org A's data, and an empty list of its own), invoice PDF
+  generation, job-attachment photo upload, the Stripe webhook's raw-
+  body handling, forced 404/500s exercising the observability
+  wiring from the addendum above, and the Swagger UI — all unchanged.
 
 ### Fixed — Fase 9.1
 

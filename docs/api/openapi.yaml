@@ -97,10 +97,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - auth
       security:
         - bearer: []
+      tags:
+        - auth
   /auth/verify-email:
     post:
       operationId: AuthController_verifyEmail
@@ -159,10 +159,10 @@ paths:
       responses:
         '204':
           description: ''
-      tags:
-        - auth
       security:
         - bearer: []
+      tags:
+        - auth
   /invitations/{token}:
     get:
       operationId: AuthController_getInvitation
@@ -204,10 +204,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - billing
       security:
         - bearer: []
+      tags:
+        - billing
   /organizations/me/subscription/checkout:
     post:
       operationId: BillingController_createCheckoutSession
@@ -221,10 +221,10 @@ paths:
       responses:
         '201':
           description: ''
-      tags:
-        - billing
       security:
         - bearer: []
+      tags:
+        - billing
   /organizations/me:
     get:
       operationId: OrganizationsController_getMine
@@ -232,10 +232,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - organizations
       security:
         - bearer: []
+      tags:
+        - organizations
     patch:
       operationId: OrganizationsController_updateMine
       parameters: []
@@ -248,10 +248,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - organizations
       security:
         - bearer: []
+      tags:
+        - organizations
   /audit-logs:
     get:
       operationId: AuditLogsController_list
@@ -259,10 +259,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - audit-logs
       security:
         - bearer: []
+      tags:
+        - audit-logs
   /organizations/me/members:
     get:
       operationId: MembershipsController_list
@@ -270,10 +270,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - memberships
       security:
         - bearer: []
+      tags:
+        - memberships
   /organizations/me/members/{membershipId}:
     patch:
       operationId: MembershipsController_update
@@ -292,10 +292,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - memberships
       security:
         - bearer: []
+      tags:
+        - memberships
     delete:
       operationId: MembershipsController_remove
       parameters:
@@ -307,10 +307,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - memberships
       security:
         - bearer: []
+      tags:
+        - memberships
   /users:
     get:
       operationId: UsersController_list
@@ -318,10 +318,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - users
       security:
         - bearer: []
+      tags:
+        - users
   /users/{id}:
     get:
       operationId: UsersController_findOne
@@ -334,10 +334,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - users
       security:
         - bearer: []
+      tags:
+        - users
     patch:
       operationId: UsersController_update
       parameters:
@@ -355,10 +355,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - users
       security:
         - bearer: []
+      tags:
+        - users
     delete:
       operationId: UsersController_remove
       parameters:
@@ -370,10 +370,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - users
       security:
         - bearer: []
+      tags:
+        - users
   /roles:
     get:
       operationId: RolesController_listRoles
@@ -381,10 +381,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - roles
       security:
         - bearer: []
+      tags:
+        - roles
   /permissions:
     get:
       operationId: RolesController_listPermissions
@@ -392,10 +392,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - roles
       security:
         - bearer: []
+      tags:
+        - roles
   /clients:
     get:
       operationId: ClientsController_list
@@ -418,10 +418,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - clients
       security:
         - bearer: []
+      tags:
+        - clients
     post:
       operationId: ClientsController_create
       parameters: []
@@ -434,10 +434,10 @@ paths:
       responses:
         '201':
           description: ''
-      tags:
-        - clients
       security:
         - bearer: []
+      tags:
+        - clients
   /clients/{id}:
     get:
       operationId: ClientsController_findOne
@@ -450,10 +450,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - clients
       security:
         - bearer: []
+      tags:
+        - clients
     patch:
       operationId: ClientsController_update
       parameters:
@@ -471,10 +471,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - clients
       security:
         - bearer: []
+      tags:
+        - clients
     delete:
       operationId: ClientsController_remove
       parameters:
@@ -486,10 +486,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - clients
       security:
         - bearer: []
+      tags:
+        - clients
   /clients/{id}/addresses:
     get:
       operationId: ClientsController_listAddresses
@@ -502,10 +502,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - clients
       security:
         - bearer: []
+      tags:
+        - clients
     post:
       operationId: ClientsController_createAddress
       parameters:
@@ -523,10 +523,10 @@ paths:
       responses:
         '201':
           description: ''
-      tags:
-        - clients
       security:
         - bearer: []
+      tags:
+        - clients
   /service-categories:
     get:
       operationId: ServicesController_listCategories
@@ -534,10 +534,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - services
       security:
         - bearer: []
+      tags:
+        - services
     post:
       operationId: ServicesController_createCategory
       parameters: []
@@ -550,10 +550,10 @@ paths:
       responses:
         '201':
           description: ''
-      tags:
-        - services
       security:
         - bearer: []
+      tags:
+        - services
   /services:
     get:
       operationId: ServicesController_list
@@ -576,10 +576,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - services
       security:
         - bearer: []
+      tags:
+        - services
     post:
       operationId: ServicesController_create
       parameters: []
@@ -592,10 +592,10 @@ paths:
       responses:
         '201':
           description: ''
-      tags:
-        - services
       security:
         - bearer: []
+      tags:
+        - services
   /services/{id}:
     get:
       operationId: ServicesController_findOne
@@ -608,10 +608,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - services
       security:
         - bearer: []
+      tags:
+        - services
     patch:
       operationId: ServicesController_update
       parameters:
@@ -629,10 +629,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - services
       security:
         - bearer: []
+      tags:
+        - services
     delete:
       operationId: ServicesController_remove
       parameters:
@@ -644,10 +644,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - services
       security:
         - bearer: []
+      tags:
+        - services
   /jobs:
     get:
       operationId: JobsController_list
@@ -682,10 +682,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - jobs
       security:
         - bearer: []
+      tags:
+        - jobs
     post:
       operationId: JobsController_create
       parameters: []
@@ -698,10 +698,10 @@ paths:
       responses:
         '201':
           description: ''
-      tags:
-        - jobs
       security:
         - bearer: []
+      tags:
+        - jobs
   /jobs/{id}:
     get:
       operationId: JobsController_findOne
@@ -714,10 +714,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - jobs
       security:
         - bearer: []
+      tags:
+        - jobs
     patch:
       operationId: JobsController_update
       parameters:
@@ -735,10 +735,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - jobs
       security:
         - bearer: []
+      tags:
+        - jobs
     delete:
       operationId: JobsController_remove
       parameters:
@@ -750,10 +750,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - jobs
       security:
         - bearer: []
+      tags:
+        - jobs
   /jobs/{id}/start:
     post:
       operationId: JobsController_start
@@ -766,10 +766,10 @@ paths:
       responses:
         '201':
           description: ''
-      tags:
-        - jobs
       security:
         - bearer: []
+      tags:
+        - jobs
   /jobs/{id}/complete:
     post:
       operationId: JobsController_complete
@@ -782,10 +782,10 @@ paths:
       responses:
         '201':
           description: ''
-      tags:
-        - jobs
       security:
         - bearer: []
+      tags:
+        - jobs
   /jobs/{id}/assignments:
     post:
       operationId: JobsController_createAssignment
@@ -804,10 +804,10 @@ paths:
       responses:
         '201':
           description: ''
-      tags:
-        - jobs
       security:
         - bearer: []
+      tags:
+        - jobs
   /jobs/{id}/services:
     post:
       operationId: JobsController_createJobService
@@ -826,10 +826,10 @@ paths:
       responses:
         '201':
           description: ''
-      tags:
-        - jobs
       security:
         - bearer: []
+      tags:
+        - jobs
   /jobs/{id}/attachments:
     post:
       operationId: JobsController_createAttachment
@@ -842,10 +842,10 @@ paths:
       responses:
         '201':
           description: ''
-      tags:
-        - jobs
       security:
         - bearer: []
+      tags:
+        - jobs
     get:
       operationId: JobsController_listAttachments
       parameters:
@@ -857,10 +857,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - jobs
       security:
         - bearer: []
+      tags:
+        - jobs
   /jobs/{id}/attachments/{attachmentId}:
     get:
       operationId: JobsController_downloadAttachment
@@ -878,10 +878,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - jobs
       security:
         - bearer: []
+      tags:
+        - jobs
   /notifications:
     get:
       operationId: NotificationsController_list
@@ -904,10 +904,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - notifications
       security:
         - bearer: []
+      tags:
+        - notifications
   /notifications/unread-count:
     get:
       operationId: NotificationsController_unreadCount
@@ -915,10 +915,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - notifications
       security:
         - bearer: []
+      tags:
+        - notifications
   /notifications/{id}/read:
     post:
       operationId: NotificationsController_markRead
@@ -931,10 +931,10 @@ paths:
       responses:
         '201':
           description: ''
-      tags:
-        - notifications
       security:
         - bearer: []
+      tags:
+        - notifications
   /staff:
     get:
       operationId: StaffController_list
@@ -957,10 +957,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - staff
       security:
         - bearer: []
+      tags:
+        - staff
   /staff/{id}:
     get:
       operationId: StaffController_findOne
@@ -973,10 +973,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - staff
       security:
         - bearer: []
+      tags:
+        - staff
     patch:
       operationId: StaffController_update
       parameters:
@@ -994,10 +994,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - staff
       security:
         - bearer: []
+      tags:
+        - staff
   /invoices:
     get:
       operationId: InvoicesController_list
@@ -1020,10 +1020,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - invoices
       security:
         - bearer: []
+      tags:
+        - invoices
     post:
       operationId: InvoicesController_create
       parameters: []
@@ -1036,10 +1036,10 @@ paths:
       responses:
         '201':
           description: ''
-      tags:
-        - invoices
       security:
         - bearer: []
+      tags:
+        - invoices
   /invoices/{id}:
     get:
       operationId: InvoicesController_findOne
@@ -1052,10 +1052,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - invoices
       security:
         - bearer: []
+      tags:
+        - invoices
     patch:
       operationId: InvoicesController_update
       parameters:
@@ -1073,10 +1073,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - invoices
       security:
         - bearer: []
+      tags:
+        - invoices
   /invoices/{id}/pdf:
     get:
       operationId: InvoicesController_downloadPdf
@@ -1089,10 +1089,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - invoices
       security:
         - bearer: []
+      tags:
+        - invoices
   /invoices/{id}/line-items:
     post:
       operationId: InvoicesController_createLineItem
@@ -1111,10 +1111,10 @@ paths:
       responses:
         '201':
           description: ''
-      tags:
-        - invoices
       security:
         - bearer: []
+      tags:
+        - invoices
   /payments:
     get:
       operationId: PaymentsController_list
@@ -1137,10 +1137,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - payments
       security:
         - bearer: []
+      tags:
+        - payments
     post:
       operationId: PaymentsController_create
       parameters: []
@@ -1153,10 +1153,10 @@ paths:
       responses:
         '201':
           description: ''
-      tags:
-        - payments
       security:
         - bearer: []
+      tags:
+        - payments
   /payments/{id}:
     get:
       operationId: PaymentsController_findOne
@@ -1169,10 +1169,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - payments
       security:
         - bearer: []
+      tags:
+        - payments
   /plans:
     get:
       operationId: PlansController_list
@@ -1180,10 +1180,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - plans
       security:
         - bearer: []
+      tags:
+        - plans
   /reports/revenue:
     get:
       operationId: ReportsController_getRevenue
@@ -1205,18 +1205,18 @@ paths:
           in: query
           schema:
             default: day
+            type: string
             enum:
               - day
               - week
               - month
-            type: string
       responses:
         '200':
           description: ''
-      tags:
-        - reports
       security:
         - bearer: []
+      tags:
+        - reports
   /reports/jobs-summary:
     get:
       operationId: ReportsController_getJobsSummary
@@ -1236,10 +1236,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - reports
       security:
         - bearer: []
+      tags:
+        - reports
   /reports/staff-performance:
     get:
       operationId: ReportsController_getStaffPerformance
@@ -1259,10 +1259,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - reports
       security:
         - bearer: []
+      tags:
+        - reports
   /reports/top-clients:
     get:
       operationId: ReportsController_getTopClients
@@ -1290,10 +1290,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - reports
       security:
         - bearer: []
+      tags:
+        - reports
   /reports/outstanding-invoices:
     get:
       operationId: ReportsController_getOutstandingInvoices
@@ -1301,10 +1301,10 @@ paths:
       responses:
         '200':
           description: ''
-      tags:
-        - reports
       security:
         - bearer: []
+      tags:
+        - reports
   /health:
     get:
       operationId: HealthController_check

@@ -1067,19 +1067,113 @@ de Nest de antes de este cambio.
   `SENTRY_TRACES_SAMPLE_RATE`, siguiendo el mismo patrón comentado
   que Stripe/SMTP.
 
+### Migración: NestJS 10→11
+
+La última brecha grande deliberadamente diferida desde el cierre de
+Fase 9 original. Antes de tocar nada se investigó la superficie real
+de cambios incompatibles contra **este código específico**, no contra
+NestJS 11 en abstracto — el mismo método que ya había dado buenos
+resultados para las migraciones de react-router y de dependencias:
+
+- **Express v5 + `path-to-regexp` v8**: el riesgo real citado en cada
+  cierre anterior. Se revisaron los ~75 decoradores `@Get`/`@Post`/
+  `@Patch`/`@Delete` y los 18 prefijos `@Controller` de todo
+  `apps/api/src` — ninguno usa rutas comodín (`*`), parámetros
+  opcionales (`:id?`) ni regex de ruta; todos son segmentos estáticos
+  o `:param` simples, exactamente el subconjunto que `path-to-regexp`
+  v8 sigue aceptando sin cambios. Tampoco hay `express.static`/
+  `useStaticAssets` (los adjuntos de jobs se sirven por una ruta de
+  controller normal, no por middleware estático) ni `app.use()` con
+  patrones de ruta (solo `helmet()`/`compression()`/`cookieParser()`,
+  funciones de middleware agnósticas de la versión de Express).
+- **`nestjs-cls`**: hallazgo real de la investigación — la versión
+  fija en el lockfile (`^4.4.1`) declara `peerDependencies` con
+  `@nestjs/core: "> 7.0.0 < 11"`, es decir, **no soporta Nest 11**.
+  Esta librería es el mecanismo central de tenant-context
+  (`AsyncLocalStorage` por request — ver
+  docs/architecture/multi-tenancy.md), así que un bloqueo real, no
+  cosmético. `nestjs-cls@6.2.1` sí soporta `>= 10 < 12`; se revisó su
+  `.d.ts` publicado antes del bump (no el changelog resumido) para
+  confirmar que `ClsModule.forRoot({ global, middleware: { mount } })`
+  y `ClsService.get(key)`/`.set(key, value)` — las únicas superficies
+  que usa `TenantTransactionInterceptor`/`TenantContextService` —
+  siguen exactamente iguales entre 4.x y 6.x.
+- Todas las demás dependencias de Nest tienen versión 11-compatible
+  publicada (`@nestjs/config` 4, `@nestjs/jwt`/`@nestjs/passport` 11,
+  `@nestjs/swagger` 11, `@nestjs/cli`/`@nestjs/testing` 11);
+  `@nestjs/schedule`/`@nestjs/throttler` no necesitaron bump — sus
+  `peerDependencies` ya cubrían `^10.0.0 || ^11.0.0`. `multer@2.2.0`
+  y `@types/multer@2.2.0` (ya bumpeados en la pasada de seguridad
+  anterior) resultan ser exactamente lo que `@nestjs/platform-express@11`
+  trae de fábrica. `@types/express` pasó de la línea 4.x a 5.x.
+- **Resultado del bump**: `pnpm install` limpio, sin warnings de peer
+  deps. `tsc --noEmit` y `nest build`: **cero errores, sin tocar una
+  sola línea de código de aplicación** — solo `package.json`. Explica
+  por qué la investigación previa importaba más que la ejecución: el
+  riesgo real de esta migración para _este_ proyecto siempre estuvo
+  en "¿usamos alguna sintaxis/API que cambió", y la respuesta,
+  verificada en vez de asumida, fue no.
+- **Hallazgo nuevo de seguridad durante la migración**:
+  `@nestjs/swagger@11` trae una versión más nueva de `js-yaml`
+  (5.2.1) con su propia vulnerabilidad no relacionada con la que ya
+  se había parchado antes (esa era la 4.1.0). Mismo patrón de
+  `pnpm.overrides` targeteado a la versión exacta: `js-yaml@5.2.1 →
+^5.2.3`. El override viejo (`js-yaml@4.1.0`) se retiró por quedar
+  sin ningún resolutor que lo pidiera — dejarlo hubiera sido config
+  muerta.
+
+`pnpm audit --prod`: 2 → 1 (resuelve `GHSA-36xv-jgw5-4q75` de
+`@nestjs/core`, la única vulnerabilidad de `apps/api` que quedaba; el
+`fast-xml-parser` del toolchain de Android de `apps/mobile` sigue
+siendo la única brecha de dependencias restante en todo el monorepo).
+
+#### Verificación de esta migración
+
+- `pnpm turbo run lint build test --force`: 9/9 verde, incluyendo
+  `tenant-scoping.integration.spec.ts` (la prueba de aislamiento
+  cross-tenant contra Postgres real) y `job-attachments.e2e.spec.ts`
+  (multer).
+- `pnpm docs:api`: el OpenAPI regenerado es idéntico en contenido —
+  el único diff es un reordenamiento cosmético de las claves
+  `tags`/`security` en el YAML (@nestjs/swagger 11 serializa el
+  documento en otro orden interno; mismo contrato semánticamente).
+- **Verificado en vivo contra el servidor real** (no solo con
+  tests), con Express 5 confirmado corriendo (`node_modules/.pnpm/
+express@5.2.1`, no la 4.x que queda en el árbol solo por otras
+  dependencias no relacionadas):
+  - Signup, `POST /clients`, `GET /clients/:id`, `PATCH /clients/:id`
+    y la ruta anidada `POST /clients/:id/addresses` — todas con
+    parámetros de ruta, el punto que más preocupaba de Express 5.
+  - **Aislamiento cross-tenant reconfirmado con dos organizaciones
+    reales**: la organización B pidiendo el cliente de la
+    organización A por id devuelve 404 (no los datos), y su propio
+    listado de clientes sale vacío — el mecanismo completo
+    (`nestjs-cls` + `TenantTransactionInterceptor` + RLS) sigue
+    intacto de punta a punta.
+  - Factura + `GET /invoices/:id/pdf` → PDF real y válido (`pdfkit`
+    sobre el nuevo Express).
+  - Job + subida de foto de adjunto (`POST /jobs/:id/attachments`,
+    `multer`) → 201.
+  - `POST /webhooks/stripe` (raw body vía `rawBody: true`, el punto
+    donde Express 4→5 podría romper el parseo de body crudo) →
+    503 esperado (sin `STRIPE_WEBHOOK_SECRET`), no un crash — el
+    raw body llega intacto al handler.
+  - 404 y 500 forzados: `AllExceptionsFilter`/`nestjs-pino`/
+    `NoopErrorReportingService` (el addendum de observabilidad de
+    arriba) siguen funcionando exactamente igual bajo Express 5 —
+    mismo log estructurado, misma redacción de `Authorization`,
+    mismo cuerpo de respuesta sin fuga de stack trace.
+  - `GET /api/docs` (Swagger UI) sigue sirviendo.
+
 **Fase 9 (incluyendo este addendum) completa.** Como en el cierre de
 Fase 8: no hay una fase siguiente definida en ningún documento del
 proyecto. De la lista de brechas deliberadas, quedan: cámara en
-mobile, la migración de NestJS 10→11 (superficie de cambios
-incompatibles — Express v5, sintaxis de rutas de path-to-regexp v8 —
-demasiado grande para verificar con el mismo rigor que el resto de
-este documento en una sola pasada; es también la única de las dos
-vulnerabilidades restantes que sigue pendiente, junto con
-`fast-xml-parser`), la actualización mayor de `fast-xml-parser`
-dentro del toolchain de Android de RN (sin forma de verificar el
-build de Android real en este entorno), la race angosta de recargas
-`goto()` en rápida sucesión (fuera de alcance porque requiere tocar
-la detección de reuso de tokens del servidor), y el SDK de Sentry
-del lado del navegador en `apps/web` (documentado arriba, dejado
-fuera deliberadamente de esta pasada de observabilidad). Cualquier
-dirección posterior necesita alcance definido por el stakeholder.
+mobile (bloqueada, sin dispositivo/emulador en este entorno), la
+actualización mayor de `fast-xml-parser` dentro del toolchain de
+Android de RN (misma razón — ahora la única vulnerabilidad de
+dependencias restante en todo el monorepo), la race angosta de
+recargas `goto()` en rápida sucesión (fuera de alcance porque
+requiere tocar la detección de reuso de tokens del servidor), y el
+SDK de Sentry del lado del navegador en `apps/web` (dejado fuera
+deliberadamente de la pasada de observabilidad). Cualquier dirección
+posterior necesita alcance definido por el stakeholder.
