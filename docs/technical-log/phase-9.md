@@ -877,17 +877,97 @@ mayores de arriba).
 - `pnpm audit --prod`: 13 → 3, las tres restantes documentadas arriba
   como migraciones mayores fuera de alcance.
 
+### Migración: `react-router` 7→8 (y lo que arrastró: React 19, Vite 7)
+
+Al evaluar esta migración (identificada en la pasada de auditoría de
+dependencias de arriba) se descubrió que **no es un bump aislado del
+router**, a diferencia de la 6→7 anterior: `react-router@8.3.0`
+declara `peerDependencies` de `react`/`react-dom` `>=19.2.7` y
+`engines.node >=22.22.0`, y el paquete separado `react-router-dom` se
+discontinuó — todo se unificó en el paquete `react-router` (`import
+... from 'react-router'`, sin más `react-router-dom`). Vite 7 (el
+build tool) también exige Node `>=20.19`/`>=22.12`, ya cubierto por
+este entorno. El diagnóstico completo se le presentó al stakeholder
+antes de tocar nada, porque cambiaba el perfil de riesgo que se
+había asumido inicialmente (de "bump de router" a "tres migraciones
+mayores encadenadas: React 18→19, Vite 5→7, router 7→8"); autorizó
+seguir con las tres en la misma pasada.
+
+- **React 18.3.1 → 19.2.8, Vite 5.4.8 → 7.3.6, `react-router-dom`
+  7.18.2 → `react-router` 8.3.0** en `apps/web`. `@vitejs/plugin-react`
+  4→5, `vitest` 2→4, `@vitest/coverage-v8` 2→4 (todos con soporte de
+  Vite 7 confirmado contra sus propios `peerDependencies` antes del
+  bump). `@testing-library/react` 16.3.2 ya soportaba React 19 sin
+  cambios. `@types/react`/`@types/react-dom` a las versiones 19
+  correspondientes.
+- El código ya usaba patrones compatibles con React 19 desde antes
+  (`createRoot`, sin `ReactDOM.render`, sin `PropTypes`, sin
+  `defaultProps` en componentes de función, sin refs de string) —
+  verificado por grep antes de asumir que el bump sería limpio. El
+  único ajuste real de código: `@types/react` 19 eliminó el
+  namespace global `JSX` (vive ahora en `React.JSX`), así que los 24
+  archivos que anotaban `: JSX.Element` como tipo de retorno
+  necesitaron importar `type { JSX } from 'react'` explícitamente —
+  mecánico, sin cambio de comportamiento.
+- Los 10 imports de `react-router-dom` en `apps/web/src` pasaron a
+  `react-router` — confirmado antes de tocar código que `BrowserRouter`,
+  `Route`, `Routes`, `Navigate`, `Outlet`, `NavLink`, `Link`,
+  `useNavigate`, `useSearchParams`, `useParams` (todo lo que esta app
+  usa) siguen exportados desde el paquete principal `react-router`,
+  no desde el sub-path `react-router/dom` (ese sub-path es solo para
+  APIs de router de datos — `RouterProvider`, `HydratedRouter` —, que
+  esta app no usa).
+- Bundle inicial creció de 195.77 kB (64.13 kB gzip) a 244.39 kB
+  (78.45 kB gzip) — el runtime de React 19 más el paquete unificado
+  de router 8 (que trae `cookie-es` como dependencia nueva) son más
+  grandes. Aceptado, mismo razonamiento que la migración anterior: es
+  el costo de estar en versiones soportadas y sin vulnerabilidades
+  conocidas, no una regresión de rendimiento buscada.
+- **Verificado en vivo con Playwright** con navegación realista
+  (clicks, no `goto()` encadenados): los 6 links de navegación
+  operativa, las tarjetas del dashboard, el toggle List/Calendar de
+  Jobs, atrás/adelante del navegador vía clicks + History API,
+  logout, redirección de rutas protegidas a `/login`, y
+  `/forgot-password` público. Consola limpia salvo el único 400 ya
+  conocido y esperado (`POST /auth/refresh` sin cookie en el primer
+  `GET /login` de un visitante nuevo — comportamiento por diseño, no
+  un error).
+- **Un primer intento de verificación con el script heredado de la
+  migración 6→7** (que sí encadena varios `goto()` de recarga
+  completa seguidos) reprodujo el 401/logout silencioso de la race ya
+  documentada arriba, en su forma original: confirma que sigue viva
+  y sin tocar, no que esta migración la haya introducido — se
+  reconfirmó corriendo la misma secuencia con navegación realista
+  (clicks), que pasó limpio.
+
+`pnpm audit --prod`: 3 → 2 (resuelve `GHSA-qwww-vcr4-c8h2`,
+react-router RSC-mode CSRF bypass — que esta app no ejercitaba, al no
+usar RSC, pero igual cerraba el hallazgo del audit).
+
+#### Verificación de esta migración
+
+- `pnpm --filter web run build` / `lint` / `test` — verde (15/15
+  tests, incluyendo el de regresión de StrictMode del fix anterior).
+- `pnpm turbo run lint build test --force` — 9/9 tareas verdes en
+  todo el monorepo.
+- `pnpm audit --prod`: 3 → 2 vulnerabilidades.
+- Verificación en vivo con Playwright contra el dev server real
+  (Vite 7, React 19), navegación realista: sin errores de consola
+  nuevos, todos los flujos operativos y de auth intactos.
+
 **Fase 9 (incluyendo este addendum) completa.** Como en el cierre de
 Fase 8: no hay una fase siguiente definida en ningún documento del
 proyecto. De la lista de brechas deliberadas, quedan: cámara en
 mobile, la migración de NestJS 10→11 (superficie de cambios
 incompatibles — Express v5, sintaxis de rutas de path-to-regexp v8 —
 demasiado grande para verificar con el mismo rigor que el resto de
-este documento en una sola pasada), la migración de react-router 7→8
-(nueva, encontrada en esta pasada de auditoría), la actualización
-mayor de `fast-xml-parser` dentro del toolchain de Android de RN
-(sin forma de verificar el build de Android real en este entorno), y
-la race angosta de recargas `goto()` en rápida sucesión documentada
-arriba (fuera de alcance porque requiere tocar la detección de reuso
-de tokens del servidor). Cualquier dirección posterior necesita
-alcance definido por el stakeholder.
+este documento en una sola pasada; es también la única de las dos
+vulnerabilidades restantes que sigue pendiente, junto con
+`fast-xml-parser`), la actualización mayor de `fast-xml-parser`
+dentro del toolchain de Android de RN (sin forma de verificar el
+build de Android real en este entorno), y la race angosta de
+recargas `goto()` en rápida sucesión documentada arriba (fuera de
+alcance porque requiere tocar la detección de reuso de tokens del
+servidor — reconfirmada viva, sin tocar, durante esta migración).
+Cualquier dirección posterior necesita alcance definido por el
+stakeholder.

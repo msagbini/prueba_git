@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, type FormEvent, type JSX } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { apiFetch, ApiError } from '../api/client';
 import { AuthCard } from '../components/ui/AuthCard';
 import { Button } from '../components/ui/Button';

@@ -1,4 +1,5 @@
-import { Link } from 'react-router-dom';
+import type { JSX } from 'react';
+import { Link } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 
 const OPERATIONAL_SHORTCUTS = [

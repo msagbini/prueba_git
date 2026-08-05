@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useEffect, useState, type JSX } from 'react';
+import { Link, useSearchParams } from 'react-router';
 import { apiFetch } from '../api/client';
 import { AuthCard } from '../components/ui/AuthCard';
 

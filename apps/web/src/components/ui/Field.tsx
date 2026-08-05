@@ -1,6 +1,7 @@
 import {
   useId,
   type InputHTMLAttributes,
+  type JSX,
   type ReactNode,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,

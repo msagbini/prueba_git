@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import { apiFetch } from '../api/client';
 import type { AppNotification, Paginated } from '../types/api';
 

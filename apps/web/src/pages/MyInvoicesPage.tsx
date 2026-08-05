@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import { apiFetch, downloadFile } from '../api/client';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';

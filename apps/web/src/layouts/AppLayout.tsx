@@ -1,4 +1,5 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import type { JSX } from 'react';
+import { NavLink, Outlet } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { NotificationBell } from '../components/NotificationBell';
 

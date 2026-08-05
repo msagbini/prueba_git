@@ -1,4 +1,4 @@
-import { StrictMode } from 'react';
+import { StrictMode, type JSX } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider, useAuth } from './AuthContext';

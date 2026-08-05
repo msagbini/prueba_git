@@ -1,5 +1,5 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useState, type FormEvent, type JSX } from 'react';
+import { Link, useNavigate, useParams } from 'react-router';
 import { apiFetch, ApiError } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { AuthCard } from '../components/ui/AuthCard';

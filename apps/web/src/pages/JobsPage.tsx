@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import { apiFetch, ApiError } from '../api/client';
 import { Button } from '../components/ui/Button';
 import { Field, SelectField, TextareaField } from '../components/ui/Field';

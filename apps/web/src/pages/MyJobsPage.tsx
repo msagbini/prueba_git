@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import { apiFetch } from '../api/client';
 import { Pagination } from '../components/ui/Pagination';
 import type { Job, JobStatus, Paginated } from '../types/api';

@@ -95,6 +95,35 @@ deliberately unbuilt (`docs/technical-log/phase-9.md` has the full log).
   the 6→7 one above), and `fast-xml-parser` (needs 5.7.0+, buried
   inside React Native's own Android CLI build tooling — unverifiable
   without a device/emulator in this environment).
+- **`react-router` 7→8** (`apps/web`): turned out not to be an
+  isolated router bump — v8's peer deps require React `>=19.2.7` and
+  Node `>=22.22.0`, and the separate `react-router-dom` package was
+  discontinued in favor of a unified `react-router` package. Surfaced
+  this to the stakeholder before starting, since it changed the risk
+  profile from "router bump" to "three chained major migrations";
+  got explicit go-ahead to do all three in one pass. Bumped React
+  18.3.1 → 19.2.8, Vite 5.4.8 → 7.3.6, `react-router-dom` 7.18.2 →
+  `react-router` 8.3.0 (plus `@vitejs/plugin-react`, `vitest`,
+  `@vitest/coverage-v8`, `@types/react(-dom)` to their Vite-7/React-19
+  -compatible majors). Only real code change: `@types/react` 19
+  removed the global `JSX` namespace, so the 24 files annotating
+  `: JSX.Element` return types needed an explicit `import type {
+  JSX } from 'react'` — mechanical, no behavior change. The 10
+  `react-router-dom` imports became `react-router` (confirmed first
+  that every API this app uses — `BrowserRouter`, `Route`, `Routes`,
+  `Link`, `NavLink`, `useNavigate`, `useSearchParams`, `useParams` —
+  ships from the main package, not the data-router-only `react-router
+  /dom` sub-path). Bundle grew 195.77 kB → 244.39 kB gzip (64.13 kB →
+  78.45 kB) — the larger React 19 runtime plus router 8's new
+  `cookie-es` dependency; accepted as the cost of staying current and
+  vulnerability-free. `pnpm audit --prod` goes from 3 to 2. Verified
+  live with Playwright using realistic click-based navigation: all
+  nav links, dashboard shortcuts, browser back/forward, logout,
+  protected/public route guarding — clean. Re-running the legacy
+  6→7-migration verification script (which chains several full-page
+  `goto()` reloads back-to-back) reproduced the already-documented
+  refresh-token race below in its original form — confirmed it's
+  still there and untouched, not something this migration introduced.
 
 ### Fixed — Fase 9.1
 

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useState, type JSX } from 'react';
+import { useSearchParams } from 'react-router';
 import { apiFetch, ApiError } from '../api/client';
 import type { CheckoutSession, Plan, Subscription } from '../types/api';
 
