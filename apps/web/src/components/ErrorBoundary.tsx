@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { captureException } from '../observability/sentry';
 import { Button } from './ui/Button';
 
 interface Props {
@@ -13,10 +14,7 @@ interface State {
  * Catches rendering errors anywhere in the subtree and shows a recovery
  * screen instead of leaving the caller on a blank page — React error
  * boundaries only work as class components (`componentDidCatch`/
- * `getDerivedStateFromError` have no hook equivalent). Shipping the error
- * to an external tracker (mirroring `apps/api`'s Sentry wiring) is
- * deliberately out of scope for this pass — see
- * docs/technical-log/phase-9.md.
+ * `getDerivedStateFromError` have no hook equivalent).
  */
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null };
@@ -37,6 +35,7 @@ export class ErrorBoundary extends Component<Props, State> {
    */
   componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error('Unhandled UI error:', error, info.componentStack);
+    captureException(error, info.componentStack ?? undefined);
   }
 
   /**

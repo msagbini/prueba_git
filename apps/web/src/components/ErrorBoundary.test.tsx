@@ -1,6 +1,12 @@
 import { render, screen, fireEvent } from '@testing-library/react';
+import * as Sentry from '@sentry/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ErrorBoundary } from './ErrorBoundary';
+
+vi.mock('@sentry/react', () => ({
+  init: vi.fn(),
+  captureException: vi.fn(),
+}));
 
 /** Throws during render, to exercise the boundary's fallback path. */
 function Bomb(): never {
@@ -52,6 +58,19 @@ describe('ErrorBoundary', () => {
       'Unhandled UI error:',
       expect.any(Error),
       expect.any(String),
+    );
+  });
+
+  it('reports the caught error to Sentry', () => {
+    render(
+      <ErrorBoundary>
+        <Bomb />
+      </ErrorBoundary>,
+    );
+
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ contexts: { react: { componentStack: expect.any(String) } } }),
     );
   });
 

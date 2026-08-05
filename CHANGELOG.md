@@ -87,6 +87,21 @@ deliberately unbuilt (`docs/technical-log/phase-9.md` has the full log).
   the nav bar (unread badge, dropdown, mark-as-read); `apps/mobile`
   gets a matching `NotificationsButton` (badge, header, both the Staff
   and Client stacks) and a `NotificationsScreen`.
+- **Browser-side Sentry** (`apps/web`), closing the one gap left open
+  by the observability work above: `src/observability/sentry.ts`
+  mirrors the backend's pattern (`Sentry.init({ dsn:
+  import.meta.env.VITE_SENTRY_DSN })`; an unset DSN is itself a safe
+  SDK no-op, so no separate no-op class was needed here unlike the
+  backend's Nest-provider setup). `ErrorBoundary` now reports caught
+  errors to Sentry in addition to logging them. Same honesty standard
+  as the rest of the project: no real Sentry account, so only the SDK
+  call correctness is verified, not real delivery. **Real, disclosed
+  cost**: initial bundle grew 244.39 kB → 331.87 kB gzip (78.68 kB →
+  108.01 kB, ~37%) — the heaviest single jump in this document,
+  because the SDK has to live in the main entry point (initialized
+  before first render) and can't benefit from this app's existing
+  route-level code-splitting. Verified live with Playwright in both
+  configurations (DSN set and unset): clean console in both.
 
 ### Changed — Fase 9.1
 

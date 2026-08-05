@@ -1165,15 +1165,65 @@ express@5.2.1`, no la 4.x que queda en el árbol solo por otras
     mismo cuerpo de respuesta sin fuga de stack trace.
   - `GET /api/docs` (Swagger UI) sigue sirviendo.
 
+### Cierre del addendum de observabilidad: Sentry en `apps/web`
+
+El único punto que se había dejado fuera deliberadamente de la
+pasada de observabilidad. `initSentry()`/`captureException()`
+(`src/observability/sentry.ts`) mirrorean exactamente el patrón del
+backend: `Sentry.init({ dsn: import.meta.env.VITE_SENTRY_DSN })` —
+sin DSN configurado, `Sentry.init` con `dsn: undefined` es en sí
+mismo un no-op seguro del propio SDK (no hace falta una
+implementación no-op separada como en el backend, donde el
+`ErrorReportingService` necesitaba dos clases porque el punto de
+inyección era un provider de Nest). `ErrorBoundary.componentDidCatch`
+ahora también llama `captureException()` además de loguear a
+consola. Mismo estándar de honestidad que el resto del proyecto: sin
+cuenta real de Sentry, así que la entrega real queda sin verificar —
+solo se verificó que la llamada al SDK es correcta en ambas ramas
+(con y sin DSN).
+
+**Costo real, no oculto**: el bundle inicial creció de 244.39 kB
+(78.68 kB gzip) a 331.87 kB (108.01 kB gzip) — un salto de ~37% en
+gzip, considerablemente más que cualquier bump de versión anterior
+en este documento. El SDK de Sentry para navegador es pesado incluso
+sin usar sus features de tracing/session-replay explícitamente,
+porque vive en el punto de entrada principal (se inicializa antes
+del primer render, para poder capturar cualquier error desde el
+arranque) y por eso no puede beneficiarse del code-splitting por
+ruta que ya tiene esta app. Es una compensación real: observabilidad
+del lado del cliente a cambio de un load inicial más pesado, para un
+proyecto que hoy no tiene cuenta real de Sentry para beneficiarse de
+ella. Se documenta explícitamente en vez de mencionarlo de pasada,
+para que quede claro que fue una decisión, no un descuido.
+
+Verificado en vivo con Playwright contra el dev server real, en dos
+configuraciones — sin `VITE_SENTRY_DSN` y con una DSN de prueba con
+formato válido pero no real —: la página de login renderiza limpio
+en ambos casos, sin errores de consola atribuibles al SDK de Sentry
+(el único error visto en la segunda corrida fue un CORS esperado por
+correr ese servidor en un puerto distinto al configurado en
+`CORS_ORIGIN`, no relacionado).
+
+#### Verificación de este cierre
+
+- Tests nuevos: `sentry.ts` (init con/sin DSN, `captureException` con/
+  sin component stack) y la aserción nueva en `ErrorBoundary.test.tsx`
+  (reporta a Sentry al capturar un error) — mockeando `@sentry/react`,
+  mismo patrón que los tests del backend mockeando `@sentry/node`.
+- `pnpm --filter web run build`/`lint`/`test`: verde, 24/24 tests
+  (19 previos + 5 nuevos).
+- `pnpm turbo run lint build test --force`: 9/9 verde en todo el
+  monorepo.
+- Verificación en vivo con Playwright: página de login limpia con y
+  sin `VITE_SENTRY_DSN` configurado.
+
 **Fase 9 (incluyendo este addendum) completa.** Como en el cierre de
 Fase 8: no hay una fase siguiente definida en ningún documento del
 proyecto. De la lista de brechas deliberadas, quedan: cámara en
 mobile (bloqueada, sin dispositivo/emulador en este entorno), la
 actualización mayor de `fast-xml-parser` dentro del toolchain de
-Android de RN (misma razón — ahora la única vulnerabilidad de
-dependencias restante en todo el monorepo), la race angosta de
-recargas `goto()` en rápida sucesión (fuera de alcance porque
-requiere tocar la detección de reuso de tokens del servidor), y el
-SDK de Sentry del lado del navegador en `apps/web` (dejado fuera
-deliberadamente de la pasada de observabilidad). Cualquier dirección
-posterior necesita alcance definido por el stakeholder.
+Android de RN (única vulnerabilidad de dependencias restante en todo
+el monorepo), y la race angosta de recargas `goto()` en rápida
+sucesión (fuera de alcance porque requiere tocar la detección de
+reuso de tokens del servidor). Cualquier dirección posterior necesita
+alcance definido por el stakeholder.
