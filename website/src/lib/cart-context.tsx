@@ -30,7 +30,7 @@ type CartContextValue = {
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
-const STORAGE_KEY = "made-with-grace-cart";
+const STORAGE_KEY = "sweet-grace-cart";
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
@@ -57,7 +57,25 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [items, hydrated]);
 
   const addItem: CartContextValue["addItem"] = (item) => {
-    setItems((prev) => [...prev, { ...item, id: crypto.randomUUID() }]);
+    setItems((prev) => {
+      // Same product + same size + same customisation note -> bump the
+      // existing line's quantity instead of adding a duplicate row.
+      const matchIndex = prev.findIndex(
+        (existing) =>
+          existing.slug === item.slug &&
+          (existing.size ?? "") === (item.size ?? "") &&
+          (existing.note ?? "") === (item.note ?? ""),
+      );
+      if (matchIndex !== -1) {
+        const next = [...prev];
+        next[matchIndex] = {
+          ...next[matchIndex],
+          quantity: next[matchIndex].quantity + item.quantity,
+        };
+        return next;
+      }
+      return [...prev, { ...item, id: crypto.randomUUID() }];
+    });
   };
 
   const removeItem = (id: string) => {

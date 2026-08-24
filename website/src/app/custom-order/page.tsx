@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { categories, getCategory } from "@/lib/products";
-import { shapes, type ShapeId } from "@/lib/shapes";
+import { shapes, SHAPE_MAX_CHARS, type ShapeId } from "@/lib/shapes";
 import { getColor } from "@/lib/colors";
 import LivePreview from "@/components/LivePreview";
 import ShapePicker from "@/components/ShapePicker";
@@ -22,10 +22,17 @@ export default function CustomOrderPage() {
   const [character, setCharacter] = useState("1");
   const [colorId, setColorId] = useState("");
   const [eventDate, setEventDate] = useState("");
+  const [printText, setPrintText] = useState("");
   const [message, setMessage] = useState("");
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [fulfillment, setFulfillment] = useState<Fulfillment>("delivery");
   const [lastFulfillment, setLastFulfillment] = useState<Fulfillment>("delivery");
+  const maxChars = SHAPE_MAX_CHARS[shape];
+
+  const handleShapeChange = (nextShape: ShapeId) => {
+    setShape(nextShape);
+    setPrintText((t) => t.slice(0, SHAPE_MAX_CHARS[nextShape]));
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -59,6 +66,7 @@ export default function CustomOrderPage() {
       setStatus("success");
       form.reset();
       setImageDataUrl(null);
+      setPrintText("");
       setMessage("");
       setShape("circle");
       setCharacter("1");
@@ -102,7 +110,7 @@ export default function CustomOrderPage() {
               shape={shape}
               character={character}
               imageDataUrl={imageDataUrl}
-              message={message}
+              message={printText}
               color={colorId ? getColor(colorId)?.hex : undefined}
             />
           </div>
@@ -158,7 +166,7 @@ export default function CustomOrderPage() {
               options={ALL_SHAPE_IDS}
               shape={shape}
               character={character}
-              onShapeChange={setShape}
+              onShapeChange={handleShapeChange}
               onCharacterChange={setCharacter}
             />
             <input type="hidden" name="shape" value={shape} />
@@ -168,6 +176,23 @@ export default function CustomOrderPage() {
 
             <ColorPicker colorId={colorId} onChange={setColorId} />
             <input type="hidden" name="color" value={colorId} />
+
+            <div>
+              <label className="text-sm font-semibold text-berry-dark">
+                Text to print on the item (optional)
+              </label>
+              <input
+                name="printText"
+                value={printText}
+                onChange={(e) => setPrintText(e.target.value)}
+                maxLength={maxChars}
+                placeholder="e.g. a name or short message"
+                className="mt-1 w-full rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
+              />
+              <p className="mt-1 text-right text-xs text-foreground/50">
+                {printText.length}/{maxChars} characters
+              </p>
+            </div>
 
             <div>
               <label className="text-sm font-semibold text-berry-dark">
@@ -246,7 +271,7 @@ export default function CustomOrderPage() {
             </div>
             <div>
               <label className="text-sm font-semibold text-berry-dark">
-                Tell us about your order
+                Anything else we should know?
               </label>
               <textarea
                 name="message"

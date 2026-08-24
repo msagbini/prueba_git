@@ -5,18 +5,21 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/lib/cart-context";
 import type { Product } from "@/lib/products";
-import type { ShapeId } from "@/lib/shapes";
+import { SHAPE_MAX_CHARS, type ShapeId } from "@/lib/shapes";
 import { getColor } from "@/lib/colors";
+import { useToast } from "@/lib/toast-context";
 import LivePreview from "@/components/LivePreview";
 import StarRating from "@/components/StarRating";
 import ShapePicker from "@/components/ShapePicker";
 import ColorPicker from "@/components/ColorPicker";
 import CrossSell from "@/components/CrossSell";
 import ShareButtons from "@/components/ShareButtons";
+import QuantityStepper from "@/components/QuantityStepper";
 
 export default function ProductCustomizer({ product }: { product: Product }) {
   const { addItem } = useCart();
   const router = useRouter();
+  const { showToast } = useToast();
   const [size, setSize] = useState(product.sizes?.[0] ?? "");
   const [shape, setShape] = useState<ShapeId>(product.shapeOptions?.[0] ?? "circle");
   const [character, setCharacter] = useState("1");
@@ -25,7 +28,12 @@ export default function ProductCustomizer({ product }: { product: Product }) {
   const [note, setNote] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
-  const [added, setAdded] = useState(false);
+  const maxChars = SHAPE_MAX_CHARS[shape];
+
+  const handleShapeChange = (nextShape: ShapeId) => {
+    setShape(nextShape);
+    setNote((n) => n.slice(0, SHAPE_MAX_CHARS[nextShape]));
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -65,8 +73,9 @@ export default function ProductCustomizer({ product }: { product: Product }) {
       note: details || undefined,
       quantity,
     });
-    setAdded(true);
-    setTimeout(() => setAdded(false), 2500);
+    showToast("Added to your cart!", {
+      action: { label: "View cart", onClick: () => router.push("/cart") },
+    });
   };
 
   return (
@@ -121,7 +130,7 @@ export default function ProductCustomizer({ product }: { product: Product }) {
               options={product.shapeOptions}
               shape={shape}
               character={character}
-              onShapeChange={setShape}
+              onShapeChange={handleShapeChange}
               onCharacterChange={setCharacter}
             />
           )}
@@ -152,23 +161,21 @@ export default function ProductCustomizer({ product }: { product: Product }) {
                 <textarea
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
+                  maxLength={maxChars}
                   rows={3}
                   placeholder="e.g. names, colours, theme details..."
                   className="mt-1 w-full rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
                 />
+                <p className="mt-1 text-right text-xs text-foreground/50">
+                  {note.length}/{maxChars} characters
+                </p>
               </div>
             </>
           )}
 
           <div className="flex items-center gap-3">
             <label className="text-sm font-semibold text-berry-dark">Qty</label>
-            <input
-              type="number"
-              min={1}
-              value={quantity}
-              onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
-              className="w-20 rounded-lg border border-berry/20 bg-white px-3 py-2 text-sm focus:border-berry focus:outline-none"
-            />
+            <QuantityStepper quantity={quantity} onChange={setQuantity} />
           </div>
 
           <button
@@ -177,18 +184,6 @@ export default function ProductCustomizer({ product }: { product: Product }) {
           >
             Add to Cart - ${(product.price * quantity).toFixed(2)}
           </button>
-          {added && (
-            <p className="text-center text-sm font-medium text-green-700">
-              Added to your cart!{" "}
-              <button
-                type="button"
-                onClick={() => router.push("/cart")}
-                className="underline"
-              >
-                View cart
-              </button>
-            </p>
-          )}
         </form>
 
         <p className="mt-4 text-xs text-foreground/50">

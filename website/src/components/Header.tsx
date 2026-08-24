@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
 import { useCart } from "@/lib/cart-context";
 import { categories } from "@/lib/products";
@@ -19,8 +20,11 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-50 border-b border-berry/10 bg-cream/95 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
-        <Link href="/" className="font-display text-2xl font-bold text-berry">
-          Made <span className="italic text-gold">with</span> Grace
+        <Link href="/" aria-label="Sweet Grace — home" className="flex items-center gap-2">
+          <Image src="/logo.png" alt="Sweet Grace" width={40} height={40} priority />
+          <span className="font-display hidden text-xl font-bold text-berry sm:inline">
+            Sweet Grace
+          </span>
         </Link>
 
         <nav className="hidden items-center gap-6 md:flex">

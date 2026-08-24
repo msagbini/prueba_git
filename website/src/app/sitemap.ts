@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 import { categories, products } from "@/lib/products";
 
-const SITE_URL = "https://madewithgrace.com.au";
+const SITE_URL = "https://sweetgrace.com.au";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const staticRoutes = ["", "/shop", "/custom-order", "/faq"].map((path) => ({

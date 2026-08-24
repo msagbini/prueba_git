@@ -1,10 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/lib/cart-context";
+import QuantityStepper from "@/components/QuantityStepper";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 export default function CartPage() {
   const { items, removeItem, updateQuantity, subtotal } = useCart();
+  const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
+  const pendingItem = items.find((i) => i.id === pendingRemoveId);
 
   if (items.length === 0) {
     return (
@@ -50,20 +55,15 @@ export default function CartPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <input
-                type="number"
-                min={1}
-                value={item.quantity}
-                onChange={(e) =>
-                  updateQuantity(item.id, Number(e.target.value))
-                }
-                className="w-16 rounded-lg border border-berry/20 px-2 py-1 text-sm"
+              <QuantityStepper
+                quantity={item.quantity}
+                onChange={(q) => updateQuantity(item.id, q)}
               />
               <span className="w-20 text-right font-semibold text-berry">
                 ${(item.price * item.quantity).toFixed(2)}
               </span>
               <button
-                onClick={() => removeItem(item.id)}
+                onClick={() => setPendingRemoveId(item.id)}
                 className="text-sm text-red-500 hover:underline"
               >
                 Remove
@@ -86,6 +86,23 @@ export default function CartPage() {
       >
         Proceed to Checkout
       </Link>
+
+      <ConfirmDialog
+        open={pendingRemoveId !== null}
+        title="Remove this item?"
+        description={
+          pendingItem
+            ? `"${pendingItem.name}" will be removed from your cart.`
+            : undefined
+        }
+        confirmLabel="Remove"
+        cancelLabel="Keep it"
+        onConfirm={() => {
+          if (pendingRemoveId) removeItem(pendingRemoveId);
+          setPendingRemoveId(null);
+        }}
+        onCancel={() => setPendingRemoveId(null)}
+      />
     </div>
   );
 }

@@ -32,3 +32,16 @@ export const shapes: ShapeDef[] = [
 export function getShape(id?: string) {
   return shapes.find((s) => s.id === id) ?? shapes[0];
 }
+
+// How many characters of a printed message actually fit inside each shape's
+// silhouette - heart/star lose a lot of usable area to their notches/points
+// compared to a circle or square. Shared between LivePreview (rendering)
+// and the order forms (input maxLength + live counter).
+export const SHAPE_MAX_CHARS: Record<ShapeId, number> = {
+  circle: 22,
+  square: 26,
+  heart: 16,
+  star: 14,
+  number: 26,
+  letter: 26,
+};

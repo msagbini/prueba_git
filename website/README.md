@@ -1,4 +1,4 @@
-# Made with Grace — Website
+# Sweet Grace — Website
 
 Custom storefront for Grace's edible images, cookie cutters, custom
 chocolates and cake toppers business. Built with Next.js (App Router),

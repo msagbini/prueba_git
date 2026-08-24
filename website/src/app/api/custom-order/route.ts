@@ -12,6 +12,7 @@ export async function POST(request: Request) {
   const email = formData.get("email");
   const category = formData.get("category");
   const message = formData.get("message");
+  const printText = formData.get("printText");
   const image = formData.get("image");
   const shape = formData.get("shape");
   const character = formData.get("character");
@@ -53,6 +54,7 @@ export async function POST(request: Request) {
       email,
       category,
       message,
+      printText,
       shape,
       character,
       color,

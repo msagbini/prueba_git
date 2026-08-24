@@ -1,6 +1,6 @@
 "use client";
 
-import { HEART_CLIP, STAR_CLIP, type ShapeId } from "@/lib/shapes";
+import { HEART_CLIP, STAR_CLIP, SHAPE_MAX_CHARS, type ShapeId } from "@/lib/shapes";
 
 const MATERIAL: Record<string, { base: string; edge: string; fallback: string }> = {
   "edible-images": { base: "#fdfaf3", edge: "#ffffff", fallback: "🖼️" },
@@ -43,15 +43,16 @@ function shapeGeometry(shape: ShapeId) {
 }
 
 // Heart/star clip-paths leave a smaller readable area than their bounding
-// box, so text needs tighter padding, a smaller size and a shorter cap
-// than the rectangular shapes to stay inside the visible silhouette.
-const TEXT_SAFE_AREA: Record<ShapeId, { classes: string; maxChars: number }> = {
-  circle: { classes: "px-7 text-xs", maxChars: 22 },
-  square: { classes: "px-3 text-sm", maxChars: 26 },
-  heart: { classes: "px-9 pt-8 text-[0.65rem] leading-tight", maxChars: 16 },
-  star: { classes: "px-10 text-[0.6rem] leading-tight", maxChars: 14 },
-  number: { classes: "text-sm", maxChars: 26 },
-  letter: { classes: "text-sm", maxChars: 26 },
+// box, so text needs tighter padding and a smaller size than the
+// rectangular shapes to stay inside the visible silhouette. Character caps
+// live in shapes.ts (SHAPE_MAX_CHARS) since form inputs need them too.
+const TEXT_SAFE_AREA_CLASSES: Record<ShapeId, string> = {
+  circle: "px-7 text-xs",
+  square: "px-3 text-sm",
+  heart: "px-9 pt-8 text-[0.65rem] leading-tight",
+  star: "px-10 text-[0.6rem] leading-tight",
+  number: "text-sm",
+  letter: "text-sm",
 };
 
 function ShapeFrame({
@@ -85,13 +86,20 @@ function ShapeFrame({
         backgroundPosition: "center",
       }}
     >
+      {imageDataUrl && message && (
+        <span
+          className={`font-display rounded-lg bg-black/45 text-center font-semibold italic text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.6)] ${TEXT_SAFE_AREA_CLASSES[shape]}`}
+        >
+          {message.slice(0, SHAPE_MAX_CHARS[shape])}
+        </span>
+      )}
       {!imageDataUrl && message && (
         <span
           className={`font-display text-center font-semibold italic ${
             isDarkHex(fillColor ?? material.base) ? "text-white" : "text-berry-dark"
-          } ${TEXT_SAFE_AREA[shape].classes}`}
+          } ${TEXT_SAFE_AREA_CLASSES[shape]}`}
         >
-          {message.slice(0, TEXT_SAFE_AREA[shape].maxChars)}
+          {message.slice(0, SHAPE_MAX_CHARS[shape])}
         </span>
       )}
       {!imageDataUrl && !message && (

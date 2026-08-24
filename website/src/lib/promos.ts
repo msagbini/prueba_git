@@ -14,7 +14,7 @@ export const promos: Promo[] = [
   {
     id: "custom-order",
     eyebrow: "Made just for you",
-    title: "Sweet details, made with grace",
+    title: "Sweet details, made with love",
     description:
       "Upload your photo or idea and watch it come to life before you order.",
     ctaLabel: "Start a Custom Order",

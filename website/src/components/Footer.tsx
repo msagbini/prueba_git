@@ -9,8 +9,11 @@ export default function Footer() {
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-4">
         <div>
           <h4 className="font-display text-xl font-semibold text-berry-dark">
-            Made with Grace
+            Sweet Grace
           </h4>
+          <p className="mt-1 text-sm italic text-foreground/60">
+            Cakes &amp; cookies made with love.
+          </p>
           <p className="mt-2 text-sm text-foreground/70">
             Custom edible images, cookie cutters, chocolates & cake toppers,
             handmade in Western Australia and shipped nationwide.
@@ -50,7 +53,7 @@ export default function Footer() {
               </Link>
             </li>
             <li>Shipping Australia-wide</li>
-            <li>hello@madewithgrace.com.au</li>
+            <li>hello@sweetgrace.com.au</li>
           </ul>
         </div>
         <div>
@@ -64,7 +67,7 @@ export default function Footer() {
         </div>
       </div>
       <div className="border-t border-berry/10 py-4 text-center text-xs text-foreground/50">
-        © {new Date().getFullYear()} Made with Grace. All rights reserved.
+        © {new Date().getFullYear()} Sweet Grace. All rights reserved.
       </div>
     </footer>
   );
